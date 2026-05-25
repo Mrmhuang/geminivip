@@ -101,7 +101,14 @@
               <input id="queryLinkInput" readonly style="flex:1; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; background: #fff; color: #333;" />
               <button onclick="copyQueryLink()" style="padding: 10px 16px; font-size: 13px; white-space: nowrap; background: #3b5bdb; color: #fff; border: none; border-radius: 6px; cursor: pointer;">复制</button>
             </div>
-            <p style="font-size: 12px; color: #888; margin-top: 10px;">⏰ 整个流程约需 10~20 分钟，您无需在此等待。稍后通过此链接查看结果即可。</p>
+            <div id="waitingTips" style="margin-top: 14px; padding: 12px 14px; background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; border-radius: 8px; color: #7c2d12; font-size: 13px; line-height: 1.75;">
+              <p style="margin: 0 0 6px; font-weight: 600; color: #b91c1c;">⏰ 请耐心等待 10 ~ 20 分钟</p>
+              <ul style="margin: 0 0 0 18px; padding: 0;">
+                <li>请<strong>务必复制并保存上面的链接</strong>，稍后通过该链接查询认证结果，<strong>无需在此停留等待</strong>。</li>
+                <li>若最终显示<strong>失败</strong>，可<strong>重新提交</strong>再次尝试（卡密未消耗）。</li>
+                <li>如有任何疑问，请<strong>联系闲鱼卖家</strong>，我们会尽快为您处理。</li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
@@ -335,8 +342,8 @@
             updateStatus('running', '执行中...', '正在与认证服务器交互，请稍候');
           } else if (data.status === 'processing') {
             updateStatus('processing', '认证处理中...', '已提交认证请求，等待结果返回（约5-15分钟）');
-          } else if (data.status === 'telegram_success' || data.status === 'bindcard_running') {
-            updateStatus('bindcard', 'Telegram认证成功，正在自动绑卡...', '绑卡流程正在自动执行，请耐心等待（约1-3分钟）');
+          } else if (data.status === 'auth_success' || data.status === 'bindcard_running') {
+            updateStatus('bindcard', '认证成功，正在自动绑卡...', '绑卡流程正在自动执行，请耐心等待（约1-3分钟）');
           } else if (data.status === 'success') {
             updateStatus('success', '🎉 全部完成！', '会员绑卡成功！Google One AI Premium 已激活。可前往 <a href="https://one.google.com/settings" target="_blank">Google One 设置页面</a> 查看订阅状态。');
             if (pollTimer) clearInterval(pollTimer);
@@ -362,12 +369,22 @@
         document.getElementById('statusMessage').innerHTML = message;
         document.getElementById('statusPosition').textContent = position || '';
 
-        // 完成或失败时隐藏"无需等待"提示
+        // 完成或失败时隐藏"耐心等待"提示
         if (type === 'success' || type === 'failed') {
-          const linkBox = document.getElementById('queryLinkBox');
-          if (linkBox) {
-            const hint = linkBox.querySelector('p:last-child');
-            if (hint) hint.style.display = 'none';
+          const tips = document.getElementById('waitingTips');
+          if (tips) tips.style.display = 'none';
+        }
+        // 失败时追加"可重新提交 / 联系闲鱼"提示
+        if (type === 'failed') {
+          const msgEl = document.getElementById('statusMessage');
+          if (msgEl && !msgEl.dataset.failHintAdded) {
+            msgEl.insertAdjacentHTML(
+              'beforeend',
+              '<div style="margin-top:12px; padding:10px 12px; background:#fef2f2; border:1px solid #fecaca; border-left:4px solid #dc2626; border-radius:8px; color:#7f1d1d; font-size:13px; line-height:1.7; text-align:left;">' +
+                '认证未通过，您可以<strong>重新提交再次尝试</strong>；如有疑问请<strong>联系闲鱼卖家</strong>协助处理。' +
+              '</div>'
+            );
+            msgEl.dataset.failHintAdded = '1';
           }
         }
       }

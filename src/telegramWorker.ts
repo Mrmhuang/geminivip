@@ -209,11 +209,11 @@ async function handleBotResult(event: Api.UpdateNewMessage): Promise<void> {
     const link = linkMatch ? linkMatch[0] : '';
 
     // 第一阶段完成：Telegram 认证成功
-    task.status = 'telegram_success';
+    task.status = 'auth_success';
     task.offerLink = link;
     task.message = link
-      ? `Telegram认证成功！正在自动绑卡...`
-      : 'Telegram认证成功！但未获取到链接，绑卡无法执行。';
+      ? `认证成功！正在自动绑卡...`
+      : '认证成功！但未获取到链接，绑卡无法执行。';
 
     // 更新数据库中的 Telegram 状态
     const logId = findSubmitLogByEmail(task.email);
@@ -230,7 +230,7 @@ async function handleBotResult(event: Api.UpdateNewMessage): Promise<void> {
     } else {
       // 没有链接，直接标记失败
       task.status = 'failed';
-      task.message = 'Telegram认证成功但未获取到Google One Pro链接，无法绑卡。';
+      task.message = '认证成功但未获取到Google One Pro链接，无法绑卡。';
       if (logId) updateTelegramStatus(logId, 'success_no_link');
     }
   } else {

@@ -9,7 +9,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "generate-keys": "tsx scripts/generateKeys.ts",
-    "setup-session": "tsx scripts/setupSession.ts"
+    "setup-session": "tsx scripts/setupSession.ts",
+    "test:bindcard": "tsx scripts/testBindCard.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",

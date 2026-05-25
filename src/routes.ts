@@ -99,7 +99,7 @@ router.get('/api/queue', (req: Request, res: Response) => {
 router.get('/api/health', (req: Request, res: Response) => {
   res.json({
     status: 'ok',
-    telegram: isProcessorReady() ? 'connected' : 'disconnected',
+    auth: isProcessorReady() ? 'connected' : 'disconnected',
     browser: getBrowserStatus().connected ? 'connected' : 'disconnected',
     queue: getQueueLength(),
   });
@@ -280,7 +280,7 @@ router.post('/api/admin/trigger-bindcard', async (req: Request, res: Response) =
     totpKey: log.totp_key,
     cardKey: log.card_key,
     offerLink: log.offer_link,
-    status: 'telegram_success',
+    status: 'auth_success',
     message: '管理员手动触发绑卡...',
     createdAt: Date.now(),
   };

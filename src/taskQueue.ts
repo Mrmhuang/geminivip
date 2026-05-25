@@ -6,8 +6,8 @@ export interface Task {
   password: string;
   totpKey: string;
   cardKey: string; // 卡密，认证成功后才消耗
-  offerLink?: string; // Telegram 认证成功后获取的 Google One Pro 链接
-  status: 'queued' | 'running' | 'processing' | 'telegram_success' | 'bindcard_running' | 'success' | 'failed';
+  offerLink?: string; // 认证成功后获取的 Google One Pro 链接
+  status: 'queued' | 'running' | 'processing' | 'auth_success' | 'bindcard_running' | 'success' | 'failed';
   message: string;
   createdAt: number;
   position?: number;
@@ -106,7 +106,7 @@ export function getQueueLength(): number {
 export function getActiveCount(): number {
   let count = queue.length;
   for (const task of tasks.values()) {
-    if (task.status === 'running' || task.status === 'processing' || task.status === 'telegram_success' || task.status === 'bindcard_running') {
+    if (task.status === 'running' || task.status === 'processing' || task.status === 'auth_success' || task.status === 'bindcard_running') {
       count++;
     }
   }
