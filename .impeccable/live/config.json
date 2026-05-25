@@ -1,0 +1,7 @@
+{
+  "files": ["public/index.html", "public/guide.html", "public/admin.html"],
+  "exclude": [],
+  "insertBefore": "</body>",
+  "commentSyntax": "html",
+  "cspChecked": true
+}

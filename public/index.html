@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemini Pro 认证</title>
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/antd@5/dist/reset.min.css" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='1.5'%3E%3Cpath d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <svg
+          class="logo"
+          width="32"
+          height="32"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+        </svg>
+        <div>
+          <h1>Google AI Pro 一年会员认证</h1>
+          <p class="subtitle">
+            免费获取 Google AI Pro（5TB）一年会员资格
+          </p>
+        </div>
+      </div>
+
+      <div class="benefits">
+        <h3>认证成功后你将获得（价值 $19.99/月，免费使用一年）</h3>
+        <ul>
+          <li><svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>尊享 Gemini 3.1 Pro 模型和高级推理功能</li>
+          <li><svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>获享 4 倍用量限额，用量限额是未订阅 Google AI 方案时的 4 倍</li>
+            <li><svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+              使用 图片生成、视频生成、Deep Research、NotebookLM 等功能
+            </li>
+        </ul>
+      </div>
+
+      <a href="/guide.html" target="_blank" class="guide-link">
+        <span class="guide-warn">⚠️ 提交前必须完成准备工作，
+        <span class="guide-cta">查看准备教程 →</span>
+
+        </span>
+      </a>
+
+      <div id="queueInfo" class="queue-info" style="display:none">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>当前排队: <strong id="queueCount">0</strong> 人</span>
+      </div>
+
+      <!-- React 表单挂载点 -->
+      <div id="formRoot"></div>
+
+      <!-- 状态面板 -->
+      <div id="status" style="display: none">
+        <div class="status-card">
+          <div id="statusIcon" class="status-icon"></div>
+          <h2 id="statusTitle">排队中...</h2>
+          <p id="statusMessage">请等待，认证正在进行中</p>
+          <p id="statusPosition" class="position"></p>
+          <!-- 查询链接区域 -->
+          <div id="queryLinkBox" style="display:none; margin-top: 20px; padding: 16px; background: #f0f7ff; border-radius: 10px; text-align: left;">
+            <p style="font-size: 13px; color: #555; margin-bottom: 8px;">📋 您可以通过以下链接随时查看进度：</p>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input id="queryLinkInput" readonly style="flex:1; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; background: #fff; color: #333;" />
+              <button onclick="copyQueryLink()" style="padding: 10px 16px; font-size: 13px; white-space: nowrap; background: #3b5bdb; color: #fff; border: none; border-radius: 6px; cursor: pointer;">复制</button>
+            </div>
+            <p style="font-size: 12px; color: #888; margin-top: 10px;">⏰ 整个流程约需 10~20 分钟，您无需在此等待。稍后通过此链接查看结果即可。</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- <div class="trust-footer">
+        <div class="trust-item">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <span>安全至上</span>
+        </div>
+        <div class="trust-divider"></div>
+        <div class="trust-item">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          <span>快速</span>
+        </div>
+        <div class="trust-divider"></div>
+        <div class="trust-item">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+            <polyline points="22 4 12 14.01 9 11.01" />
+          </svg>
+          <span>不做存储</span>
+        </div>
+      </div> -->
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/antd@5/dist/antd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+      const { Form, Input, Button, ConfigProvider, App: AntApp } = antd;
+      const { useState } = React;
+
+      function AuthForm() {
+        const [form] = Form.useForm();
+        const [loading, setLoading] = useState(false);
+        const [submitted, setSubmitted] = useState(false);
+
+        const onFinish = async (values) => {
+          setLoading(true);
+          try {
+            const res = await fetch('/api/submit', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(values),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              form.setFields([{ name: 'cardKey', errors: [data.error || '提交失败'] }]);
+              setLoading(false);
+              return;
+            }
+            setSubmitted(true);
+            document.getElementById('formRoot').style.display = 'none';
+            document.getElementById('status').style.display = 'block';
+            showQueryLink(data.taskId);
+            startPolling(data.taskId);
+          } catch (err) {
+            form.setFields([{ name: 'cardKey', errors: ['网络错误，请重试'] }]);
+            setLoading(false);
+          }
+        };
+
+        return (
+          <ConfigProvider theme={{ token: { colorPrimary: '#3b5bdb', borderRadius: 10 } }}>
+            <Form
+              form={form}
+              layout="vertical"
+              onFinish={onFinish}
+              validateTrigger={['onBlur', 'onChange']}
+              size="large"
+            >
+              <Form.Item
+                label="谷歌邮箱 (Gmail)"
+                name="email"
+                rules={[
+                  { required: true, message: '请输入谷歌邮箱' },
+                  { type: 'email', message: '邮箱格式不正确' },
+                  { pattern: /@gmail\.com$/i, message: '必须是 @gmail.com 邮箱' },
+                ]}
+              >
+                <Input placeholder="example@gmail.com" />
+              </Form.Item>
+
+              <Form.Item
+                label="谷歌密码"
+                name="password"
+                rules={[
+                  { required: true, message: '请输入谷歌密码' },
+                  { min: 8, message: '密码至少8位' },
+                ]}
+              >
+                <Input.Password placeholder="请输入谷歌邮箱密码" />
+              </Form.Item>
+
+              <Form.Item
+                label="TOTP Secret Key（请查看准备教程获取）"
+                name="totpKey"
+                extra="在 Google 账号 2FA 设置中获取，格式为32个字母数字字符"
+                rules={[
+                  { required: true, message: '请输入 TOTP Secret Key' },
+                  {
+                    validator: (_, value) => {
+                      if (!value) return Promise.resolve();
+                      const clean = value.replace(/\s/g, '');
+                      if (clean.length !== 32) return Promise.reject('必须是32个字符（不含空格）');
+                      return Promise.resolve();
+                    }
+                  },
+                ]}
+              >
+                <Input placeholder="如: fssy mbvb 4rkm 5p4w hgf4 hivg xwxy c7ig" />
+              </Form.Item>
+
+              <Form.Item
+                label="卡密"
+                name="cardKey"
+                extra="拍下宝贝卖家会提供"
+                rules={[
+                  { required: true, message: '请输入卡密' },
+                  { pattern: /^[A-Z0-9]{8}-[a-f0-9]{8}$/i, message: '卡密格式不正确' },
+                ]}
+              >
+                <Input placeholder="如: A3KX9MPQ-f7c2b1d8" />
+              </Form.Item>
+
+              <Form.Item>
+                <Button type="primary" htmlType="submit" loading={loading} block style={{ height: 48, fontWeight: 600 }}>
+                  提交认证
+                </Button>
+              </Form.Item>
+            </Form>
+          </ConfigProvider>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('formRoot')).render(<AuthForm />);
+
+      // Fetch queue length
+      (async function() {
+        try {
+          const res = await fetch('/api/queue');
+          const data = await res.json();
+          document.getElementById('queueCount').textContent = data.length;
+          document.getElementById('queueInfo').style.display = 'flex';
+        } catch(e) {}
+      })();
+
+      // 从 URL 参数恢复轮询（用户通过链接回来查看进度）
+      (function() {
+        const params = new URLSearchParams(window.location.search);
+        const taskId = params.get('taskId');
+        if (taskId) {
+          document.getElementById('formRoot').style.display = 'none';
+          document.getElementById('status').style.display = 'block';
+          document.querySelector('.benefits').style.display = 'none';
+          document.querySelector('.guide-link').style.display = 'none';
+          document.getElementById('queueInfo').style.display = 'none';
+          showQueryLink(taskId);
+          startPolling(taskId);
+        }
+      })();
+
+      // 显示查询链接
+      function showQueryLink(taskId) {
+        const link = window.location.origin + '/?taskId=' + taskId;
+        document.getElementById('queryLinkBox').style.display = 'block';
+        document.getElementById('queryLinkInput').value = link;
+      }
+
+      // 复制链接
+      function copyQueryLink() {
+        const input = document.getElementById('queryLinkInput');
+        input.select();
+        navigator.clipboard.writeText(input.value).then(() => {
+          const btn = input.nextElementSibling;
+          btn.textContent = '已复制 ✓';
+          setTimeout(() => { btn.textContent = '复制'; }, 2000);
+        }).catch(() => {
+          document.execCommand('copy');
+        });
+      }
+
+      // Polling logic
+      function startPolling(taskId) {
+        // 先立即请求一次
+        pollOnce(taskId);
+        const pollTimer = setInterval(() => pollOnce(taskId, pollTimer), 5000);
+      }
+
+      async function pollOnce(taskId, pollTimer) {
+        try {
+          const res = await fetch('/api/status/' + taskId);
+          if (res.status === 404) {
+            updateStatus('failed', '任务不存在或已过期', '该任务可能已过期（超过1小时），请重新提交。');
+            if (pollTimer) clearInterval(pollTimer);
+            return;
+          }
+          const data = await res.json();
+          if (data.status === 'queued') {
+            updateStatus('queued', '排队中...', data.message, data.position ? '前面还有 ' + (data.position - 1) + ' 个任务' : '');
+          } else if (data.status === 'running') {
+            updateStatus('running', '执行中...', '正在与认证服务器交互，请稍候');
+          } else if (data.status === 'processing') {
+            updateStatus('processing', '认证处理中...', '已提交认证请求，等待结果返回（约5-15分钟）');
+          } else if (data.status === 'telegram_success' || data.status === 'bindcard_running') {
+            updateStatus('bindcard', 'Telegram认证成功，正在自动绑卡...', '绑卡流程正在自动执行，请耐心等待（约1-3分钟）');
+          } else if (data.status === 'success') {
+            updateStatus('success', '🎉 全部完成！', '会员绑卡成功！Google One AI Premium 已激活。可前往 <a href="https://one.google.com/settings" target="_blank">Google One 设置页面</a> 查看订阅状态。');
+            if (pollTimer) clearInterval(pollTimer);
+          } else if (data.status === 'failed') {
+            updateStatus('failed', '操作失败', data.message);
+            if (pollTimer) clearInterval(pollTimer);
+          }
+        } catch (err) {}
+      }
+
+      function updateStatus(type, title, message, position) {
+        const iconEl = document.getElementById('statusIcon');
+        const icons = {
+          queued: '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+          running: '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>',
+          processing: '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>',
+          bindcard: '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="1.5"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>',
+          success: '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+          failed: '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+        };
+        iconEl.innerHTML = icons[type] || '';
+        document.getElementById('statusTitle').textContent = title;
+        document.getElementById('statusMessage').innerHTML = message;
+        document.getElementById('statusPosition').textContent = position || '';
+
+        // 完成或失败时隐藏"无需等待"提示
+        if (type === 'success' || type === 'failed') {
+          const linkBox = document.getElementById('queryLinkBox');
+          if (linkBox) {
+            const hint = linkBox.querySelector('p:last-child');
+            if (hint) hint.style.display = 'none';
+          }
+        }
+      }
+    </script>
+  </body>
+</html>

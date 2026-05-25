@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>准备工作教程 - Gemini Pro 认证</title>
+    <link rel="stylesheet" href="/style.css" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='1.5'%3E%3Cpath d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <div class="guide-layout">
+      <div class="container guide-container">
+        <h1>准备工作教程</h1>
+        <p class="subtitle">在提交认证之前，请确保你的 Google 账号满足以下条件</p>
+
+      <div class="steps">
+        <div class="step" id="step-1">
+          <h3 id="toc-sub">1. 账号不能有现有订阅</h3>
+          <p>
+            你的 Google 账号 现在没有任何 Gemini
+            订阅。如果有，需要确保已经过期或取消。
+            之前学生认证过的，过期了的也可以认证。
+          </p>
+        </div>
+
+        <div class="step" id="step-2">
+          <h3 id="toc-payment">2. 删除付款资料</h3>
+          <p>需要删除 Google Payments 中的所有付款资料（信用卡、银行卡等）。删除后页面应显示"暂无支付方式"，如下图所示：</p>
+          <img src="/1.png" alt="Google Wallet 无付款方式" class="guide-img" />
+          <p>
+            <a
+              href="https://wallet.google.com/wallet/u/0/paymentmethods"
+              target="_blank"
+              >前往 Google Pay 管理支付方式 &rarr;</a
+            >
+          </p>
+        </div>
+
+        <div class="step" id="step-3">
+          <h3 id="toc-totp">3. 启用两步验证并获取 TOTP Secret Key</h3>
+          <p>这是<span style="color: red;">最关键的一步</span>，请按以下流程操作：</p>
+
+          <div class="sub-step">
+            <h4>① 进入 Google 账号安全设置，启用两步验证</h4>
+            <p>
+              打开
+              <a
+                href="https://myaccount.google.com/security"
+                target="_blank"
+                >Google 两步验证设置页面</a
+              >，如果尚未开启两步验证，点击"开始"按钮启用它。
+            </p>
+            <p>注意：如果本身启用了，要删掉重新走一遍流程</p>
+            <img src="/2.png" alt="Google 安全设置页面" class="guide-img" />
+          </div>
+
+          <div class="sub-step">
+            <h4>② 添加"身份验证器应用"</h4>
+            <p>在两步验证页面中，找到"身份验证器应用"选项并点击添加。</p>
+            <img src="/3.png" alt="添加身份验证器" class="guide-img" />
+
+            <img src="/4.png" alt="显示二维码" class="guide-img" />
+            <img src="/5.png" alt="使用 2fa.fun 扫描" class="guide-img" />
+            <img src="/6.png" alt="获取密钥" class="guide-img" />
+
+            <p>获取到密钥后，将 <a href="https://2fa.fun/" target="_blank">2fa.fun</a> 页面显示的 6 位验证码填入 Google 验证框，点击"验证"完成绑定。</p>
+            <img src="/7.png" alt="输入验证码完成绑定" class="guide-img" />
+          </div>
+
+          <div class="sub-step">
+            <h4>③ 确认两步验证已开启</h4>
+            <p>返回安全设置页面，确认两步验证状态显示为"已开启"。</p>
+            <img src="/8.png" alt="两步验证已开启" class="guide-img" />
+            <img src="/9.png" alt="验证状态确认" class="guide-img" />
+          </div>
+
+          <div class="sub-step">
+            <h4>④ 删除绑定的电话号码（如有）</h4>
+            <p>如果你的账号绑定了电话号码用于两步验证，请将其删除。</p>
+            <img src="/10.png" alt="删除电话号码" class="guide-img" />
+          </div>
+
+          <div class="tip">
+            <strong>💡 提示:</strong> <span style="color: red;">TOTP Secret Key 记得保存好</span>，格式类似：
+            <code>afsy movb 5rkm 6p4w hgf4 hivg xwxy c7ig</code>（32 个字母数字字符，空格可有可无）。这就是你在认证页面需要填写的密钥。
+          </div>
+        </div>
+
+        <div class="step" id="step-4">
+          <h3 id="toc-family">4. 退出 Google 家庭群组</h3>
+          <p>您的账号不得加入任何 Google 家庭群组。如果已加入，请暂时退出该群组，稍后再重新加入。</p>
+          <p>您可以访问 <a href="https://myaccount.google.com/family" target="_blank">Google 家庭群组管理页面</a> 查看并退出家庭群组。</p>
+        </div>
+
+        <!-- <div class="step" id="step-4">
+          <h3 id="toc-age">4. 账号年龄建议</h3>
+          <p>
+            建议使用注册超过<strong>一周</strong>的 Google
+            账号。新注册的账号可能验证失败。
+          </p>
+        </div> -->
+
+        <div class="step" id="step-5">
+          <h3 id="toc-done">5. 确认完成</h3>
+          <p>
+            当以上所有步骤都完成后，复制好你的 <span style="color: red;">TOTP Secret Key</span>，就可以回到认证页面提交信息了。认证过程全自动，通常在
+            2-3 分钟内完成，<a href="/" target="_blank"
+              ><strong> 开始认证</strong></a
+            >。
+          </p>
+        </div>
+      </div>
+    </div>
+    <aside class="toc-sidebar">
+      <nav class="toc">
+        <a href="#toc-sub" class="toc-link is-active-link">1. 账号不能有现有订阅</a>
+        <a href="#toc-payment" class="toc-link">2. 删除付款资料</a>
+        <a href="#toc-totp" class="toc-link">3. 获取两步认证 TOTP Key</a>
+        <a href="#toc-family" class="toc-link">4. 退出 Google 家庭群组</a>
+        <!-- <a href="#toc-age" class="toc-link">5. 账号年龄</a> -->
+        <a href="#toc-done" class="toc-link">5. 确认完成</a>
+      </nav>
+    </aside>
+    </div>
+
+    <script>
+      (function() {
+        var links = document.querySelectorAll('.toc-link');
+        var headings = document.querySelectorAll('.steps h3[id]');
+
+        function update() {
+          var scrollBottom = window.innerHeight + window.pageYOffset;
+          var docHeight = document.documentElement.scrollHeight;
+          var active = 0;
+
+          if (docHeight - scrollBottom < 150) {
+            active = headings.length - 1;
+          } else {
+            for (var i = 0; i < headings.length; i++) {
+              if (headings[i].getBoundingClientRect().top < 100) {
+                active = i;
+              }
+            }
+          }
+
+          links.forEach(function(l) { l.classList.remove('is-active-link'); });
+          links[active].classList.add('is-active-link');
+        }
+
+        window.addEventListener('scroll', update);
+        update();
+      })();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/medium-zoom@1.1.0/dist/medium-zoom.min.js"></script>
+    <script>mediumZoom('.guide-img', { margin: 24, background: 'rgba(0,0,0,0.85)' });</script>
+  </body>
+</html>
