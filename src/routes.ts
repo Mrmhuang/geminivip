@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { validateKey, generateKey } from './cardKey';
 import { isKeyUsed, markKeyUsed, restoreKey, getSubmitLogs, logSubmit, getSubmitLogById } from './database';
 import { createTask, getTaskStatus, getQueueLength, getActiveCount, isProcessorReady, isEmailActive } from './taskQueue';
-import { config, updateTelegramSession } from './config';
+import { config, updateTelegramSession, updateCardInfo } from './config';
 import { reconnectTelegram, getTelegramStatus } from './telegramWorker';
 import { getBrowserStatus, startBindCard } from './browserWorker';
 import { Task } from './taskQueue';
@@ -310,4 +310,46 @@ router.post('/api/admin/generate-keys', (req: Request, res: Response) => {
   }
 
   res.json({ keys });
+});
+
+/**
+ * GET /api/admin/card-info - 查看当前信用卡信息（脱敏）
+ */
+router.get('/api/admin/card-info', (req: Request, res: Response) => {
+  const pwd = req.headers['x-admin-password'] || req.query.pwd;
+  if (pwd !== config.adminPassword) {
+    res.status(401).json({ error: '密码错误' });
+    return;
+  }
+
+  const c = config.card;
+  res.json({
+    number: c.number ? `****${c.number.slice(-4)}` : '',
+    expiry: c.expiry,
+    cvv: c.cvv ? '***' : '',
+    name: c.name,
+    zip: c.zip,
+  });
+});
+
+/**
+ * POST /api/admin/update-card - 热更新信用卡信息（不需重启）
+ */
+router.post('/api/admin/update-card', (req: Request, res: Response) => {
+  const pwd = req.headers['x-admin-password'] || req.query.pwd;
+  if (pwd !== config.adminPassword) {
+    res.status(401).json({ error: '密码错误' });
+    return;
+  }
+
+  const { number, expiry, cvv, name, zip } = req.body;
+  if (!number && !expiry && !cvv && !name && !zip) {
+    res.status(400).json({ error: '至少提供一个字段' });
+    return;
+  }
+
+  updateCardInfo({ number, expiry, cvv, name, zip });
+  console.log(`[Admin] 信用卡信息已更新: number=****${(number || config.card.number).slice(-4)}, expiry=${expiry || config.card.expiry}, name=${name || config.card.name}`);
+
+  res.json({ success: true, message: '信用卡信息已更新（运行时生效，重启后需重新设置或更新 .env.production）' });
 });

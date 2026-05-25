@@ -32,6 +32,17 @@ export function updateTelegramSession(newSession: string): void {
   config.telegram.session = newSession;
 }
 
+/**
+ * 运行时更新信用卡信息（热更新，不需要重启）
+ */
+export function updateCardInfo(card: { number?: string; expiry?: string; cvv?: string; name?: string; zip?: string }): void {
+  if (card.number) config.card.number = card.number;
+  if (card.expiry) config.card.expiry = card.expiry;
+  if (card.cvv) config.card.cvv = card.cvv;
+  if (card.name) config.card.name = card.name;
+  if (card.zip) config.card.zip = card.zip;
+}
+
 // 启动时校验必需配置
 export function validateConfig(): void {
   if (!config.cardSecret) throw new Error('CARD_SECRET is required in .env');

@@ -64,6 +64,7 @@ echo "[4/4] 启动新容器..."
 docker run -d \
   --name "$CONTAINER_NAME" \
   --restart unless-stopped \
+  --shm-size=1g \
   -p 3000:3000 \
   -v "$DATA_DIR":/app/data \
   --env-file "$PROJECT_DIR/.env.production" \

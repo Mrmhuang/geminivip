@@ -80,6 +80,23 @@
           <input type="number" id="keyCount" value="5" min="1" max="100" style="max-width:80px;" placeholder="数量" />
           <button class="btn-secondary" onclick="generateKeys()">生成卡密</button>
         </div>
+
+        <!-- 更新信用卡信息 -->
+        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e3ebf6;">
+          <h4 style="font-size: 13px; color: #555; margin-bottom: 12px;">💳 信用卡信息 <span id="cardCurrent" style="font-size:11px;color:#999;"></span></h4>
+          <div class="tool-row">
+            <input type="text" id="cardNumber" placeholder="卡号" style="max-width:200px;" />
+            <input type="text" id="cardExpiry" placeholder="有效期 (MM/YY)" style="max-width:120px;" />
+            <input type="text" id="cardCvv" placeholder="CVV" style="max-width:80px;" />
+          </div>
+          <div class="tool-row">
+            <input type="text" id="cardName" placeholder="持卡人姓名" style="max-width:200px;" />
+            <input type="text" id="cardZip" placeholder="ZIP" style="max-width:120px;" />
+            <button class="btn-primary" onclick="updateCard()">更新卡信息</button>
+            <button class="btn-action" onclick="loadCardInfo()">查看当前</button>
+          </div>
+          <div id="cardResult" class="tool-result" style="display:none;"></div>
+        </div>
       </div>
 
       <div class="stats">
@@ -313,6 +330,70 @@
 
     // 自动刷新（每30秒）
     setInterval(refreshData, 30000);
+
+    // 加载当前卡信息
+    async function loadCardInfo() {
+      try {
+        const res = await fetch('/api/admin/card-info', { headers: { 'x-admin-password': password } });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('cardCurrent').textContent = `当前: ${data.number} | ${data.expiry} | ${data.name} | ZIP: ${data.zip}`;
+        }
+      } catch (e) {}
+    }
+
+    // 更新信用卡信息
+    async function updateCard() {
+      const number = document.getElementById('cardNumber').value.trim();
+      const expiry = document.getElementById('cardExpiry').value.trim();
+      const cvv = document.getElementById('cardCvv').value.trim();
+      const name = document.getElementById('cardName').value.trim();
+      const zip = document.getElementById('cardZip').value.trim();
+
+      if (!number && !expiry && !cvv && !name && !zip) {
+        alert('请至少填写一个字段');
+        return;
+      }
+
+      const resultEl = document.getElementById('cardResult');
+      resultEl.style.display = 'block';
+      resultEl.textContent = '正在更新...';
+      resultEl.style.color = '#333';
+
+      try {
+        const body = {};
+        if (number) body.number = number;
+        if (expiry) body.expiry = expiry;
+        if (cvv) body.cvv = cvv;
+        if (name) body.name = name;
+        if (zip) body.zip = zip;
+
+        const res = await fetch('/api/admin/update-card', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-password': password },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          resultEl.textContent = '✅ ' + data.message;
+          resultEl.style.color = '#166534';
+          // 清空输入框
+          document.getElementById('cardNumber').value = '';
+          document.getElementById('cardExpiry').value = '';
+          document.getElementById('cardCvv').value = '';
+          document.getElementById('cardName').value = '';
+          document.getElementById('cardZip').value = '';
+          // 刷新显示
+          loadCardInfo();
+        } else {
+          resultEl.textContent = '❌ ' + (data.error || '更新失败');
+          resultEl.style.color = '#991b1b';
+        }
+      } catch (e) {
+        resultEl.textContent = '❌ 网络错误';
+        resultEl.style.color = '#991b1b';
+      }
+    }
   </script>
 </body>
 </html>
