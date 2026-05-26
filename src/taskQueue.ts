@@ -173,6 +173,29 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 }
 
 /**
+ * processing 状态超时保护（15分钟）
+ * 如果任务提交给 bot 后超过 15 分钟仍未收到结果，自动标记失败
+ * 防止 bot 维护/掉线时任务永远卡在 processing 状态
+ */
+const PROCESSING_TIMEOUT_MS = 15 * 60 * 1000; // 15分钟
+
+setInterval(() => {
+  const now = Date.now();
+  for (const task of tasks.values()) {
+    if (
+      (task.status === 'processing' || task.status === 'auth_success' || task.status === 'bindcard_running') &&
+      now - task.createdAt > PROCESSING_TIMEOUT_MS
+    ) {
+      console.warn(`[TaskQueue] 任务 ${task.id} 超时（状态: ${task.status}），强制标记失败`);
+      task.status = 'failed';
+      task.message = '任务执行超时（超过15分钟未完成），请重试。';
+      task.password = '';
+      task.totpKey = '';
+    }
+  }
+}, 60 * 1000); // 每分钟检查一次
+
+/**
  * 定期清理过期任务（1小时）
  */
 setInterval(() => {

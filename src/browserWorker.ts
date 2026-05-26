@@ -393,7 +393,30 @@ export async function startBindCard(task: Task): Promise<void> {
   return enqueueBindCard(() => _startBindCardImpl(task), `bindCard-${task.id}`);
 }
 
+/** 绑卡全流程超时（10分钟） */
+const BINDCARD_TIMEOUT_MS = 10 * 60 * 1000;
+
 async function _startBindCardImpl(task: Task): Promise<void> {
+  // 全局超时包装，防止浏览器操作无限卡住
+  return Promise.race([
+    _startBindCardCore(task),
+    new Promise<void>((_, reject) =>
+      setTimeout(() => reject(new Error('绑卡流程超时（超过10分钟），已强制中断')), BINDCARD_TIMEOUT_MS)
+    ),
+  ]).catch((err: any) => {
+    if (task.status !== 'success' && task.status !== 'failed') {
+      task.status = 'failed';
+      task.message = err.message || '绑卡超时';
+      task.password = '';
+      task.totpKey = '';
+      const logId = findSubmitLogByEmail(task.email);
+      if (logId) updateBindStatus(logId, 'failed', err.message);
+      console.error(`[Task ${task.id}] ❌ 绑卡全局超时: ${err.message}`);
+    }
+  });
+}
+
+async function _startBindCardCore(task: Task): Promise<void> {
   if (!browser || !browser.isConnected()) {
     console.error(`[Task ${task.id}] Browser not available, attempting to relaunch...`);
     await initBrowser();
@@ -792,6 +815,24 @@ export async function startBindCardDirect(
 }
 
 async function _startBindCardDirectImpl(
+  email: string,
+  password: string,
+  totpKey: string,
+  offerLink?: string
+): Promise<{ success: boolean; message: string }> {
+  // 全局超时包装
+  return Promise.race([
+    _startBindCardDirectCore(email, password, totpKey, offerLink),
+    new Promise<{ success: boolean; message: string }>((_, reject) =>
+      setTimeout(() => reject(new Error('绑卡流程超时（超过10分钟），已强制中断')), BINDCARD_TIMEOUT_MS)
+    ),
+  ]).catch((err: any) => {
+    console.error(`[DirectBind] ❌ 全局超时: ${err.message}`);
+    return { success: false, message: err.message || '绑卡超时' };
+  });
+}
+
+async function _startBindCardDirectCore(
   email: string,
   password: string,
   totpKey: string,
