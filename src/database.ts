@@ -40,6 +40,9 @@ try {
 try {
   db.exec(`ALTER TABLE submit_logs ADD COLUMN bindcard_status TEXT NOT NULL DEFAULT 'pending'`);
 } catch (e) { /* 字段已存在则忽略 */ }
+try {
+  db.exec(`ALTER TABLE submit_logs ADD COLUMN task_id TEXT`);
+} catch (e) { /* 字段已存在则忽略 */ }
 
 /**
  * 尝试标记卡密为已使用
@@ -84,10 +87,10 @@ export function logSuccess(email: string, link: string): void {
 /**
  * 记录用户提交日志（明文，用于排查问题）
  */
-export function logSubmit(email: string, password: string, totpKey: string, cardKey: string, offerLink?: string): number {
+export function logSubmit(email: string, password: string, totpKey: string, cardKey: string, offerLink?: string, taskId?: string): number {
   const result = db.prepare(
-    'INSERT INTO submit_logs (email, password, totp_key, card_key, offer_link, telegram_status, bindcard_status, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(email, password, totpKey, cardKey, offerLink || null, 'pending', 'pending', 'submitted', new Date().toISOString());
+    'INSERT INTO submit_logs (email, password, totp_key, card_key, offer_link, task_id, telegram_status, bindcard_status, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(email, password, totpKey, cardKey, offerLink || null, taskId || null, 'pending', 'pending', 'submitted', new Date().toISOString());
   return result.lastInsertRowid as number;
 }
 
@@ -121,7 +124,7 @@ export function updateBindStatus(id: number, bindcardStatus: string, message?: s
  */
 export function getSubmitLogs(): any[] {
   return db.prepare(
-    'SELECT id, email, password, totp_key, card_key, offer_link, telegram_status, bindcard_status, status, message, created_at FROM submit_logs ORDER BY id DESC'
+    'SELECT id, email, password, totp_key, card_key, offer_link, task_id, telegram_status, bindcard_status, status, message, created_at FROM submit_logs ORDER BY id DESC'
   ).all();
 }
 

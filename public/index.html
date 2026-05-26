@@ -348,7 +348,7 @@
             updateStatus('success', '🎉 全部完成！', '会员绑卡成功！Google One AI Premium 已激活。可前往 <a href="https://one.google.com/settings" target="_blank">Google One 设置页面</a> 查看订阅状态。');
             if (pollTimer) clearInterval(pollTimer);
           } else if (data.status === 'failed') {
-            updateStatus('failed', '操作失败', data.message);
+            updateStatus('failed', '操作失败', '流程遇到问题，请联系客服处理。');
             if (pollTimer) clearInterval(pollTimer);
           }
         } catch (err) {}

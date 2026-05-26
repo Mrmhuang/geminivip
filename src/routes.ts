@@ -3,7 +3,7 @@ import { validateKey, generateKey } from './cardKey';
 import { isKeyUsed, markKeyUsed, restoreKey, getSubmitLogs, logSubmit, getSubmitLogById } from './database';
 import { createTask, getTaskStatus, getQueueLength, getActiveCount, isProcessorReady, isEmailActive } from './taskQueue';
 import { config, updateTelegramSession, updateCardInfo } from './config';
-import { reconnectTelegram, getTelegramStatus } from './telegramWorker';
+import { reconnectTelegram, getTelegramStatus, pingTelegram } from './telegramWorker';
 import { getBrowserStatus, startBindCard } from './browserWorker';
 import { Task } from './taskQueue';
 
@@ -68,7 +68,7 @@ router.post('/api/submit', (req: Request, res: Response) => {
   const task = createTask(email, password, totpKey, cardKey);
 
   // 记录提交日志（明文）
-  const logId = logSubmit(email, password, totpKey, cardKey);
+  const logId = logSubmit(email, password, totpKey, cardKey, undefined, task.id);
   (task as any).logId = logId;
 
   res.json({ taskId: task.id, message: '已提交，正在排队中' });
@@ -238,6 +238,24 @@ router.get('/api/admin/telegram-status', (req: Request, res: Response) => {
     processorReady: isProcessorReady(),
     queue: getQueueLength(),
   });
+});
+
+/**
+ * POST /api/admin/telegram-ping - Telegram 拨测（验证 session 有效性和 bot 可达性）
+ */
+router.post('/api/admin/telegram-ping', async (req: Request, res: Response) => {
+  const pwd = req.headers['x-admin-password'] || req.query.pwd;
+  if (pwd !== config.adminPassword) {
+    res.status(401).json({ error: '密码错误' });
+    return;
+  }
+
+  try {
+    const result = await pingTelegram();
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
 });
 
 /**

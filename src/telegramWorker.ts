@@ -85,6 +85,65 @@ export function getTelegramStatus(): { connected: boolean; lastError?: string } 
   };
 }
 
+/**
+ * Telegram 拨测：验证 session 是否有效，能否正常和 bot 通信
+ * 返回详细诊断信息
+ */
+export async function pingTelegram(): Promise<{
+  ok: boolean;
+  clientConnected: boolean;
+  me?: string;
+  botReachable?: boolean;
+  botUsername?: string;
+  latencyMs?: number;
+  error?: string;
+}> {
+  const start = Date.now();
+  
+  if (!client) {
+    return { ok: false, clientConnected: false, error: 'Telegram 客户端未初始化' };
+  }
+  
+  if (!client.connected) {
+    return { ok: false, clientConnected: false, error: 'Telegram 客户端未连接' };
+  }
+
+  try {
+    // 1. 调用 getMe() 验证 session 有效性
+    const me = await client.getMe() as any;
+    const meInfo = me?.username ? `@${me.username}` : (me?.firstName || 'unknown');
+
+    // 2. 尝试获取 bot 实体，验证能否和 bot 通信
+    let botReachable = false;
+    let botUsername = '';
+    try {
+      const botEntity = await client.getEntity(BOT_USERNAME) as any;
+      botReachable = true;
+      botUsername = botEntity?.username || BOT_USERNAME;
+    } catch (e: any) {
+      botReachable = false;
+    }
+
+    const latencyMs = Date.now() - start;
+    return {
+      ok: botReachable,
+      clientConnected: true,
+      me: meInfo,
+      botReachable,
+      botUsername,
+      latencyMs,
+    };
+  } catch (err: any) {
+    const latencyMs = Date.now() - start;
+    return {
+      ok: false,
+      clientConnected: true,
+      error: err?.message || String(err),
+      latencyMs,
+    };
+  }
+}
+
 async function connectTelegram(): Promise<void> {
   const session = new StringSession(config.telegram.session);
   client = new TelegramClient(session, config.telegram.apiId, config.telegram.apiHash, {

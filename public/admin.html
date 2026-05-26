@@ -72,8 +72,10 @@
         <div class="tool-row">
           <input type="text" id="sessionInput" placeholder="输入新的 Telegram Session 字符串..." />
           <button class="btn-primary" onclick="updateSession()">更新 Session</button>
+          <button class="btn-secondary" onclick="pingTelegram()" id="pingBtn">📡 拨测 Telegram</button>
         </div>
         <div id="sessionResult" class="tool-result" style="display:none;"></div>
+        <div id="pingResult" class="tool-result" style="display:none;"></div>
 
         <!-- 生成 Key -->
         <div class="tool-row" style="margin-top: 16px;">
@@ -118,6 +120,7 @@
               <th>TG认证</th>
               <th>绑卡</th>
               <th>消息</th>
+              <th>查询链接</th>
               <th>提交时间</th>
               <th>操作</th>
             </tr>
@@ -201,6 +204,7 @@
           <td>${getBadge(log.telegram_status)}</td>
           <td>${getBadge(log.bindcard_status)}</td>
           <td class="wrap" style="max-width:200px;font-size:11px;color:#666;">${log.message || '-'}</td>
+          <td>${log.task_id ? '<a href="/?taskId=' + log.task_id + '" target="_blank">/?taskId=' + log.task_id + '</a> <button class="copy-btn" onclick="copyText(window.location.origin+\'/?taskId=' + log.task_id + '\')">复制</button>' : '-'}</td>
           <td>${new Date(log.created_at).toLocaleString('zh-CN')}</td>
           <td>${getActionBtn(log)}</td>
         </tr>
@@ -268,6 +272,45 @@
       } catch (e) {
         resultEl.textContent = '❌ 网络错误';
         resultEl.style.color = '#991b1b';
+      }
+    }
+
+    // 拨测 Telegram
+    async function pingTelegram() {
+      const btn = document.getElementById('pingBtn');
+      const resultEl = document.getElementById('pingResult');
+      btn.disabled = true;
+      btn.textContent = '⏳ 拨测中...';
+      resultEl.style.display = 'block';
+      resultEl.textContent = '正在检测 Telegram 连接...';
+      resultEl.style.color = '#333';
+
+      try {
+        const res = await fetch('/api/admin/telegram-ping', {
+          method: 'POST',
+          headers: { 'x-admin-password': password },
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+          resultEl.innerHTML = `✅ <b>拨测成功</b>（${data.latencyMs}ms）<br>`
+            + `👤 当前账号: ${data.me}<br>`
+            + `🤖 Bot可达: ${data.botReachable ? '是' : '否'}（@${data.botUsername}）`;
+          resultEl.style.color = '#166534';
+        } else {
+          resultEl.innerHTML = `❌ <b>拨测失败</b>${data.latencyMs ? '（' + data.latencyMs + 'ms）' : ''}<br>`
+            + `客户端连接: ${data.clientConnected ? '是' : '否'}<br>`
+            + (data.me ? `👤 账号: ${data.me}<br>` : '')
+            + (data.botReachable === false ? '🤖 Bot不可达<br>' : '')
+            + (data.error ? `错误: ${data.error}` : '⚠️ 需要更新 Session！');
+          resultEl.style.color = '#991b1b';
+        }
+      } catch (e) {
+        resultEl.textContent = '❌ 网络错误，请检查服务是否运行';
+        resultEl.style.color = '#991b1b';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '📡 拨测 Telegram';
       }
     }
 
