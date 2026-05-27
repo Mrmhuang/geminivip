@@ -300,6 +300,11 @@ curl -X POST http://your-server:3000/api/admin/update-session \
 | POST | `/api/admin/revoke-key` | 作废卡密（退货用） |
 | POST | `/api/admin/restore-key` | 恢复卡密（误消耗时用） |
 
+curl -X POST http://43.162.118.171:3000/api/admin/revoke-key \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Password: admin123" \
+  -d '{"cardKey": "1CZDK6EW-c0cbbba9"}'
+
 ---
 
 ## 数据库表

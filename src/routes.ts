@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { validateKey, generateKey } from './cardKey';
-import { isKeyUsed, markKeyUsed, restoreKey, getSubmitLogs, logSubmit, getSubmitLogById } from './database';
+import { isKeyUsed, markKeyUsed, restoreKey, getSubmitLogs, logSubmit, getSubmitLogById, updateTelegramStatus } from './database';
 import { createTask, getTaskStatus, getQueueLength, getActiveCount, isProcessorReady, isEmailActive } from './taskQueue';
 import { config, updateTelegramSession, updateCardInfo } from './config';
 import { reconnectTelegram, getTelegramStatus, pingTelegram } from './telegramWorker';
@@ -309,6 +309,71 @@ router.post('/api/admin/trigger-bindcard', async (req: Request, res: Response) =
   });
 
   res.json({ success: true, message: '绑卡已触发，请稍后刷新查看结果' });
+});
+
+/**
+ * POST /api/admin/manual-bindcard - 手动绑卡（输入用户信息 + offer link，无需现有记录）
+ *
+ * 用途：Bot 认证成功返回了 link offer，但系统未正确识别为成功时，
+ *       管理员手动输入用户信息和 offer link 执行绑卡。
+ *
+ * Body: { email, password, totpKey, offerLink, cardKey? }
+ */
+router.post('/api/admin/manual-bindcard', async (req: Request, res: Response) => {
+  const pwd = req.headers['x-admin-password'] || req.query.pwd;
+  if (pwd !== config.adminPassword) {
+    res.status(401).json({ error: '密码错误' });
+    return;
+  }
+
+  const { email, password: userPassword, totpKey, offerLink, cardKey } = req.body;
+
+  if (!email || !userPassword || !totpKey || !offerLink) {
+    res.status(400).json({ error: '必填字段：email, password, totpKey, offerLink' });
+    return;
+  }
+
+  // TOTP key 格式验证: 必须是32个 Base32 字符（A-Z, 2-7），允许中间有空格
+  const cleanTotp = totpKey.replace(/\s/g, '');
+  if (cleanTotp.length !== 32) {
+    res.status(400).json({ error: `TOTP Key 必须是32个字符（去除空格后），当前: ${cleanTotp.length} 个字符` });
+    return;
+  }
+  if (!/^[A-Z2-7]+$/i.test(cleanTotp)) {
+    const invalidChar = cleanTotp.split('').find((c: string) => !/[A-Z2-7]/i.test(c));
+    res.status(400).json({ error: `TOTP Key 包含非法字符: "${invalidChar}"，只允许 A-Z 和 2-7` });
+    return;
+  }
+
+  // 验证 offer link 格式
+  if (!offerLink.includes('one.google.com/offer/')) {
+    res.status(400).json({ error: 'offer link 格式不正确，应包含 one.google.com/offer/' });
+    return;
+  }
+
+  // 记录到数据库（如果是全新的手动操作，创建日志）
+  const logId = logSubmit(email, userPassword, totpKey, cardKey || 'admin-manual', offerLink);
+  updateTelegramStatus(logId, 'success', offerLink);
+
+  // 创建临时 Task
+  const task: Task = {
+    id: `admin-manual-${Date.now().toString(36)}`,
+    email,
+    password: userPassword,
+    totpKey,
+    cardKey: cardKey || 'admin-manual',
+    offerLink,
+    status: 'auth_success',
+    message: '管理员手动绑卡（直接提供 offer link）...',
+    createdAt: Date.now(),
+  };
+
+  // 异步触发绑卡
+  startBindCard(task).catch(err => {
+    console.error(`[Admin] 手动绑卡(manual-bindcard)失败 email=${email}: ${err.message}`);
+  });
+
+  res.json({ success: true, message: '绑卡已触发，请稍后刷新查看结果', logId });
 });
 
 /**

@@ -706,7 +706,27 @@ async function _startBindCardCore(task: Task): Promise<void> {
     await saveCardBtn.waitFor({ state: 'visible', timeout: 10000 });
     await saveCardBtn.click();
     console.log(`[Task ${task.id}] 已点击保存卡`);
-    await page.waitForTimeout(5000);
+    // 等待保存卡完成：轮询最长 25 秒，等待"订阅"按钮出现
+    console.log(`[Task ${task.id}] 等待保存卡处理完成...`);
+    let saveCardDone = false;
+    for (let i = 0; i < 25; i++) {
+      await page.waitForTimeout(1000);
+      // 在所有 frame 中查找"订阅"按钮是否已出现
+      for (const frame of page.frames()) {
+        try {
+          const btn = frame.locator('button:has-text("订阅")').first();
+          if (await btn.isVisible().catch(() => false)) {
+            saveCardDone = true;
+            console.log(`[Task ${task.id}] 保存卡后 ${i + 1}s 检测到订阅按钮`);
+            break;
+          }
+        } catch (e) {}
+      }
+      if (saveCardDone) break;
+    }
+    if (!saveCardDone) {
+      console.log(`[Task ${task.id}] 保存卡后 25s 内未检测到订阅按钮，继续执行后续逻辑...`);
+    }
     } // end if (!alreadyHasCard)
 
     // ============ Step 13: 点击"订阅" ============
@@ -753,6 +773,45 @@ async function _startBindCardCore(task: Task): Promise<void> {
             break;
           }
         } catch (e) {}
+      }
+    }
+    
+    // 如果仍未找到订阅按钮，可能是保存卡后弹窗关闭回到了 offer 页面
+    // 尝试重新点击"开始试用"来唤起订阅弹窗
+    if (!subscribeBtn) {
+      console.log(`[Task ${task.id}] 未找到订阅按钮，检查是否回到 offer 页面...`);
+      const retryStartBtn = page.locator('span[jsname="V67aGc"]:has-text("开始试用"), button:has-text("开始试用")').first();
+      if (await retryStartBtn.isVisible().catch(() => false)) {
+        console.log(`[Task ${task.id}] 检测到"开始试用"按钮，重新点击以唤起订阅弹窗...`);
+        await retryStartBtn.click();
+        await page.waitForTimeout(8000); // 等待弹窗加载
+
+        // 再次查找订阅按钮
+        for (const frame of page.frames()) {
+          try {
+            let btn = frame.locator(subscribeBtnSelector).first();
+            if (await btn.count() > 0) {
+              subscribeBtn = btn;
+              subscribeFrame = frame;
+              console.log(`[Task ${task.id}] 重试后找到订阅按钮（精确匹配）`);
+              break;
+            }
+            btn = frame.locator(subscribeFallbackSelector).first();
+            if (await btn.count() > 0) {
+              subscribeBtn = btn;
+              subscribeFrame = frame;
+              console.log(`[Task ${task.id}] 重试后找到订阅按钮（备选匹配）`);
+              break;
+            }
+            btn = frame.locator('button:has-text("订阅")').first();
+            if (await btn.count() > 0) {
+              subscribeBtn = btn;
+              subscribeFrame = frame;
+              console.log(`[Task ${task.id}] 重试后找到订阅按钮（兜底匹配）`);
+              break;
+            }
+          } catch (e) {}
+        }
       }
     }
     
@@ -1107,7 +1166,26 @@ async function _startBindCardDirectCore(
     await saveCardBtn.waitFor({ state: 'visible', timeout: 10000 });
     await saveCardBtn.click();
     console.log(`[DirectBind] 已点击保存卡`);
-    await page.waitForTimeout(5000);
+    // 等待保存卡完成：轮询最长 25 秒，等待"订阅"按钮出现
+    console.log(`[DirectBind] 等待保存卡处理完成...`);
+    let saveCardDone = false;
+    for (let i = 0; i < 25; i++) {
+      await page.waitForTimeout(1000);
+      for (const frame of page.frames()) {
+        try {
+          const btn = frame.locator('button:has-text("订阅")').first();
+          if (await btn.isVisible().catch(() => false)) {
+            saveCardDone = true;
+            console.log(`[DirectBind] 保存卡后 ${i + 1}s 检测到订阅按钮`);
+            break;
+          }
+        } catch (e) {}
+      }
+      if (saveCardDone) break;
+    }
+    if (!saveCardDone) {
+      console.log(`[DirectBind] 保存卡后 25s 内未检测到订阅按钮，继续执行后续逻辑...`);
+    }
     } // end if (!alreadyHasCard)
 
     // ============ Step 13: 点击"订阅" ============
@@ -1148,6 +1226,45 @@ async function _startBindCardDirectCore(
             break;
           }
         } catch (e) {}
+      }
+    }
+    
+    // 如果仍未找到订阅按钮，可能是保存卡后弹窗关闭回到了 offer 页面
+    // 尝试重新点击"开始试用"来唤起订阅弹窗
+    if (!subscribeBtn) {
+      console.log(`[DirectBind] 未找到订阅按钮，检查是否回到 offer 页面...`);
+      const retryStartBtn = page.locator('span[jsname="V67aGc"]:has-text("开始试用"), button:has-text("开始试用")').first();
+      if (await retryStartBtn.isVisible().catch(() => false)) {
+        console.log(`[DirectBind] 检测到"开始试用"按钮，重新点击以唤起订阅弹窗...`);
+        await retryStartBtn.click();
+        await page.waitForTimeout(8000); // 等待弹窗加载
+
+        // 再次查找订阅按钮
+        for (const frame of page.frames()) {
+          try {
+            let btn = frame.locator(subscribeBtnSelector).first();
+            if (await btn.count() > 0) {
+              subscribeBtn = btn;
+              subscribeFrame = frame;
+              console.log(`[DirectBind] 重试后找到订阅按钮（精确匹配）`);
+              break;
+            }
+            btn = frame.locator(subscribeFallbackSelector).first();
+            if (await btn.count() > 0) {
+              subscribeBtn = btn;
+              subscribeFrame = frame;
+              console.log(`[DirectBind] 重试后找到订阅按钮（备选匹配）`);
+              break;
+            }
+            btn = frame.locator('button:has-text("订阅")').first();
+            if (await btn.count() > 0) {
+              subscribeBtn = btn;
+              subscribeFrame = frame;
+              console.log(`[DirectBind] 重试后找到订阅按钮（兜底匹配）`);
+              break;
+            }
+          } catch (e) {}
+        }
       }
     }
     

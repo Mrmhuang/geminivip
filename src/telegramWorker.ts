@@ -241,6 +241,11 @@ function checkForError(text: string, step: string): void {
 
 /**
  * 后台监听器：处理 bot 发来的异步结果
+ *
+ * 支持两种消息格式：
+ * 1. 老格式（中文）：包含 "成功"/"失败"，邮箱格式为 Mail: xxx@xxx
+ * 2. 新格式（扣费通知）：包含 "success|email" 或 "failed|email" + "link offer: URL"
+ *    例: "Admin đã trừ 40 Cash ... Lý do: success|user@gmail.com | link offer: https://one.google.com/offer/XXX"
  */
 async function handleBotResult(event: Api.UpdateNewMessage): Promise<void> {
   const message = event.message as Api.Message;
@@ -248,23 +253,42 @@ async function handleBotResult(event: Api.UpdateNewMessage): Promise<void> {
 
   const text = message.message;
 
-  // 只处理最终结果消息（成功或失败）
-  if (!text.includes('成功') && !text.includes('失败')) return;
+  // ====== 判断消息是否为结果消息 ======
+  // 老格式：包含中文 "成功" 或 "失败"
+  const isOldFormatSuccess = text.includes('成功');
+  const isOldFormatFail = text.includes('失败');
+  // 新格式：包含 "success|" 或 "failed|"（Bot 扣费通知格式）
+  const newFormatSuccessMatch = text.match(/success\|(\S+@\S+)/i);
+  const newFormatFailMatch = text.match(/failed?\|(\S+@\S+)/i);
 
-  // 提取邮箱和 Job ID 来匹配任务
-  const emailMatch = text.match(/Mail:\s*(\S+@\S+)/);
+  const isSuccess = isOldFormatSuccess || !!newFormatSuccessMatch;
+  const isFail = isOldFormatFail || !!newFormatFailMatch;
+
+  // 如果既不是成功也不是失败消息，忽略
+  if (!isSuccess && !isFail) return;
+
+  // ====== 提取邮箱和 Job ID ======
+  // 老格式邮箱：Mail: xxx@xxx
+  const oldEmailMatch = text.match(/Mail:\s*(\S+@\S+)/);
+  // 新格式邮箱：success|xxx@xxx 或 failed|xxx@xxx
+  const newEmail = newFormatSuccessMatch?.[1] || newFormatFailMatch?.[1];
+  const email = oldEmailMatch ? oldEmailMatch[1] : newEmail;
+
   const jobMatch = text.match(/Job:\s*`?([a-f0-9]+)`?/);
-  const email = emailMatch ? emailMatch[1] : undefined;
   const jobId = jobMatch ? jobMatch[1] : undefined;
 
-  const task = findProcessingTask(email, jobId);
+  // 对于新格式的 success 消息（带 offer link），允许匹配已标记为 failed 的任务
+  // 场景：Bot 先发失败消息，随后又发成功+offer link 消息（扣费确认）
+  const isNewFormatSuccess = isSuccess && !!newFormatSuccessMatch;
+  const task = findProcessingTask(email, jobId, isNewFormatSuccess);
   if (!task) {
     console.log(`[Telegram] Received result but no matching task: job=${jobId} email=${email}`);
     return;
   }
 
-  if (text.includes('成功')) {
-    const linkMatch = text.match(/https:\/\/one\.google\.com\/offer\/[A-Z0-9]+/);
+  if (isSuccess) {
+    // 提取 offer 链接（两种格式通用，都含 https://one.google.com/offer/XXX）
+    const linkMatch = text.match(/https:\/\/one\.google\.com\/offer\/[A-Z0-9]+/i);
     const link = linkMatch ? linkMatch[0] : '';
 
     // 第一阶段完成：Telegram 认证成功

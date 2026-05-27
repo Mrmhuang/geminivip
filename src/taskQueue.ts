@@ -83,12 +83,29 @@ export function isEmailActive(email: string): boolean {
 
 /**
  * 通过邮箱或 jobId 查找正在处理中的任务
+ * @param allowFailed 如果为 true，也匹配最近刚标记为 failed 的任务（用于 success 消息纠正）
  */
-export function findProcessingTask(email?: string, jobId?: string): Task | undefined {
+export function findProcessingTask(email?: string, jobId?: string, allowFailed = false): Task | undefined {
+  // 优先匹配 processing 状态
   for (const task of tasks.values()) {
     if (task.status !== 'processing') continue;
     if (jobId && task.jobId === jobId) return task;
     if (email && task.email === email) return task;
+  }
+  // 如果允许匹配 failed 状态（用于特殊场景：先收到失败消息，再收到成功消息）
+  if (allowFailed) {
+    let bestMatch: Task | undefined;
+    for (const task of tasks.values()) {
+      if (task.status !== 'failed') continue;
+      if (jobId && task.jobId === jobId) return task;
+      if (email && task.email === email) {
+        // 取最近创建的那个
+        if (!bestMatch || task.createdAt > bestMatch.createdAt) {
+          bestMatch = task;
+        }
+      }
+    }
+    return bestMatch;
   }
   return undefined;
 }
