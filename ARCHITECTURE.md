@@ -2,7 +2,7 @@
 
 ## 概述
 
-自动化 Google AI Pro 一年会员认证 + 绑卡服务。用户在网页填写 Google 账号信息和卡密，后端通过 Telegram Bot 自动完成 Pixel 设备认证流程，认证成功后自动使用 Playwright 浏览器完成 Google One AI Premium 绑卡激活。
+自动化 Google AI Pro 一年会员认证 + 绑卡服务。用户在网页填写 Google 账号信息，使用**微信扫码支付（人工确认收款）**完成下单，管理员在 `/admin` 确认收款后，后端通过 Telegram Bot 自动完成 Pixel 设备认证流程，认证成功后自动使用 Playwright 浏览器完成 Google One AI Premium 绑卡激活。
 
 ## 技术栈
 
@@ -49,7 +49,7 @@ geminiVip/
 
 | 变量 | 必填 | 说明 |
 |------|------|------|
-| `CARD_SECRET` | 是 | 卡密 HMAC 签名密钥，自定义长字符串 |
+| `CARD_SECRET` | 否 | 卡密 HMAC 签名密钥（保留兼容，微信支付模式下可不填） |
 | `ADMIN_PASSWORD` | 否 | 管理后台密码，默认 `admin` |
 | `TELEGRAM_API_ID` | 是 | Telegram API ID (my.telegram.org) |
 | `TELEGRAM_API_HASH` | 是 | Telegram API Hash |
@@ -62,6 +62,10 @@ geminiVip/
 | `CARD_CVV` | 是 | 信用卡 CVV |
 | `CARD_NAME` | 是 | 信用卡持卡人姓名 |
 | `CARD_ZIP` | 否 | 账单邮编 |
+| `PAYMENT_QR_URL` | 否 | 微信收款码图片 URL，默认 `/wechat-qr.png`（放到 `public/`） |
+| `PAYMENT_AMOUNT` | 否 | 展示给用户的金额（仅展示用），默认 `29.9` |
+| `PAYMENT_COUNTDOWN_SEC` | 否 | 支付弹窗倒计时秒数，默认 `180` |
+| `PAYMENT_CLAIM_DELAY_SEC` | 否 | "我已支付"按钮的最小延迟秒数，默认 `60` |
 
 ## 脚本命令
 
@@ -85,15 +89,26 @@ geminiVip/
 ┌─────────────────────────────────────────────────────────────────┐
 │ 用户打开 index.html                                              │
 │     ↓                                                           │
-│ 填写表单（邮箱、密码、TOTP Key、卡密）                               │
+│ 填写表单（邮箱、密码、TOTP Key）                                    │
 │     ↓ 前端即时校验（Ant Design Form）                              │
 │ POST /api/submit                                                │
-│     ↓ 后端校验（格式 + HMAC验签 + 卡密未用 + 邮箱无活跃任务）          │
+│     ↓ 后端校验（格式 + 邮箱无活跃任务 + 认证服务就绪）                │
+│     ↓ 创建 pending_payment 任务（不入认证队列）                     │
 │     ↓ logSubmit() 记录提交日志                                    │
-│     ↓ createTask() 加入内存队列                                   │
-│ 返回 taskId                                                      │
+│ 返回 taskId + 支付信息                                            │
 │     ↓                                                           │
-│ 前端展示 "进度查询链接"（/?taskId=xxx），提示无需等待                   │
+│ ┌─── 支付阶段（人工确认）──────┐                                  │
+│ │ 弹窗：微信收款码 + 倒计时(3分钟) │                                  │
+│ │ 用户扫码付款                   │                                  │
+│ │ 提交 60 秒后"我已支付"按钮亮起 │                                  │
+│ │ 用户点击 → POST /api/user-paid │                                  │
+│ │ 任务状态：pending → awaiting   │                                  │
+│ │   ↓                            │                                  │
+│ │ 管理员在 /admin 看到提醒        │                                  │
+│ │ 核对到账后点"确认收款"          │                                  │
+│ │ POST /api/admin/confirm-payment│                                  │
+│ │ 任务状态：awaiting → queued    │                                  │
+│ └────────────────────────────┘                                   │
 │     ↓                                                           │
 │ ┌─── 阶段一：Telegram 认证 ───┐                                  │
 │ │ 队列处理器从队列取出任务        │                                  │
@@ -119,14 +134,25 @@ geminiVip/
 ### 任务状态流转
 
 ```
+pending_payment    → 用户已提交，等待付款（弹窗倒计时中）
+awaiting_payment   → 用户已点"我已支付"，待管理员核对
+payment_timeout    → 30分钟未确认，自动取消
 queued             → 排队等待处理
 running            → 正在与 Telegram Bot 交互（发送指令中）
 processing         → 指令已发送，等待 Bot 异步返回认证结果（约5-15分钟）
-telegram_success   → Telegram 认证成功，准备绑卡
+auth_success       → Telegram 认证成功，准备绑卡
 bindcard_running   → 浏览器自动绑卡执行中
 success            → 认证 + 绑卡全部成功 ✅
-failed             → 任意步骤失败 ❌
+failed             → 任意步骤失败 ❌（含管理员拒绝收款）
 ```
+
+### 支付确认机制（人工核对）
+
+- **不做任何自动支付检测**，纯靠管理员人工查看微信收款记录后点确认。
+- 用户提交后 `PAYMENT_CLAIM_DELAY_SEC`（默认 60 秒）内"我已支付"按钮不可点击，避免误点。
+- 弹窗倒计时 `PAYMENT_COUNTDOWN_SEC`（默认 180 秒），超时按钮变橙色提示但仍可点击。
+- 待确认订单超过 30 分钟未被处理自动转 `payment_timeout`。
+- 用户刷新页面 / 通过查询链接回来时，若任务仍是 `pending_payment` 会自动重新拉起支付弹窗。
 
 ### 成功判定逻辑
 
@@ -281,9 +307,11 @@ curl -X POST http://your-server:3000/api/admin/update-session \
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/submit` | 提交认证请求（含防重复提交） |
+| POST | `/api/submit` | 提交订单（创建 pending_payment 任务，返回支付信息） |
+| POST | `/api/user-paid` | 用户点击"我已支付"，通知管理员核对 |
 | GET | `/api/status/:taskId` | 查询任务状态 |
 | GET | `/api/queue` | 获取当前排队数 |
+| GET | `/api/payment-config` | 获取支付展示配置（前端 URL 恢复时用） |
 | GET | `/api/health` | 健康检查（Telegram/Browser 状态） |
 
 ### 管理接口（均需 `X-Admin-Password` 头或 `?pwd=` 参数）
@@ -291,14 +319,17 @@ curl -X POST http://your-server:3000/api/admin/update-session \
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/admin` | 管理后台页面 |
+| GET | `/api/admin/payments` | 获取待支付/待确认收款的任务列表 |
+| POST | `/api/admin/confirm-payment` | 确认收款，任务入认证队列 |
+| POST | `/api/admin/reject-payment` | 拒绝收款，订单取消 |
 | GET | `/api/admin/logs` | 获取所有提交记录（明文） |
 | GET | `/api/admin/telegram-status` | 查看 Telegram 连接状态 |
 | POST | `/api/admin/update-session` | 热更新 Telegram Session |
 | POST | `/api/admin/reconnect` | 重新连接 Telegram（不换 session） |
-| POST | `/api/admin/generate-keys` | 在线生成卡密 |
+| POST | `/api/admin/generate-keys` | 在线生成卡密（兼容保留） |
 | POST | `/api/admin/trigger-bindcard` | 手动触发绑卡 |
-| POST | `/api/admin/revoke-key` | 作废卡密（退货用） |
-| POST | `/api/admin/restore-key` | 恢复卡密（误消耗时用） |
+| POST | `/api/admin/revoke-key` | 作废卡密（兼容保留） |
+| POST | `/api/admin/restore-key` | 恢复卡密（兼容保留） |
 
 curl -X POST http://43.162.118.171:3000/api/admin/revoke-key \
   -H "Content-Type: application/json" \
