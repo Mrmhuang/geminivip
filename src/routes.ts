@@ -1,7 +1,19 @@
 import { Router, Request, Response } from 'express';
-import { validateKey, generateKey } from './cardKey';
-import { isKeyUsed, markKeyUsed, restoreKey, getSubmitLogs, logSubmit, getSubmitLogById, updateTelegramStatus } from './database';
-import { createTask, getTaskStatus, getQueueLength, getActiveCount, isProcessorReady, isEmailActive } from './taskQueue';
+import { generateKey } from './cardKey';
+import { markKeyUsed, restoreKey, getSubmitLogs, logSubmit, getSubmitLogById, updateTelegramStatus, updatePaymentStatus } from './database';
+import {
+  getTaskStatus,
+  getQueueLength,
+  getActiveCount,
+  isProcessorReady,
+  isEmailActive,
+  createPendingPaymentTask,
+  markUserPaid,
+  confirmPaymentAndEnqueue,
+  rejectPayment,
+  getPaymentPendingTasks,
+  getTask,
+} from './taskQueue';
 import { config, updateTelegramSession, updateCardInfo } from './config';
 import { reconnectTelegram, getTelegramStatus, pingTelegram } from './telegramWorker';
 import { getBrowserStatus, startBindCard } from './browserWorker';
@@ -10,14 +22,21 @@ import { Task } from './taskQueue';
 export const router = Router();
 
 /**
- * POST /api/submit - 提交认证请求
+ * POST /api/submit - 提交认证请求（微信人工确认支付模式）
+ *
+ * 流程：
+ *   1) 校验字段
+ *   2) 创建 pending_payment 任务（不入认证队列）
+ *   3) 返回 taskId + 支付信息（前端展示收款码 + 倒计时）
+ *   4) 用户付款后调用 /api/user-paid 通知管理员
+ *   5) 管理员在 /admin 点"确认收款" → 任务正式入队
  */
 router.post('/api/submit', (req: Request, res: Response) => {
   const { email, password, totpKey, cardKey } = req.body;
 
   // 输入校验
-  if (!email || !password || !totpKey || !cardKey) {
-    res.status(400).json({ error: '所有字段都必须填写' });
+  if (!email || !password || !totpKey) {
+    res.status(400).json({ error: '邮箱、密码、TOTP Key 必须填写' });
     return;
   }
 
@@ -40,38 +59,75 @@ router.post('/api/submit', (req: Request, res: Response) => {
     return;
   }
 
-  // 验证卡密合法性（HMAC签名）
-  if (!validateKey(cardKey, config.cardSecret)) {
-    res.status(400).json({ error: '卡密无效' });
-    return;
-  }
-
-  // 检查该邮箱是否有正在执行中的任务（防重复提交）
+  // 检查该邮箱是否有正在执行中的任务（防重复提交，含待支付/待确认）
   if (isEmailActive(email)) {
-    res.status(400).json({ error: '该邮箱已有任务正在执行中，请勿重复提交' });
+    res.status(400).json({ error: '该邮箱已有进行中的订单，请勿重复提交' });
     return;
   }
 
-  // 检查认证服务是否就绪（放在消耗卡密之前，避免浪费卡密）
+  // 检查认证服务是否就绪（避免用户付了款发现服务挂了）
   if (!isProcessorReady()) {
     res.status(503).json({ error: '认证服务暂不可用，请稍后再试' });
     return;
   }
 
-  // 检查卡密是否已使用（不立即消耗，认证成功后才标记）
-  if (isKeyUsed(cardKey)) {
-    res.status(400).json({ error: '该卡密已被使用' });
+  // 兼容卡密：若传了卡密则做轻校验（不消耗），不传则用占位符
+  const finalCardKey = (cardKey && typeof cardKey === 'string' && cardKey.trim())
+    ? cardKey.trim()
+    : 'wechat-pay';
+
+  // 创建"待支付"任务（不入队）
+  const task = createPendingPaymentTask(email, password, totpKey, finalCardKey);
+
+  // 记录提交日志（明文，便于排查）
+  const logId = logSubmit(email, password, totpKey, finalCardKey, undefined, task.id);
+  task.logId = logId;
+
+  res.json({
+    taskId: task.id,
+    message: '请按提示完成支付',
+    payment: {
+      qrUrl: config.payment.qrUrl,
+      amount: config.payment.amount,
+      countdownSec: config.payment.countdownSec,
+      claimDelaySec: config.payment.claimDelaySec,
+    },
+  });
+});
+
+/**
+ * POST /api/user-paid - 用户点击"我已支付"，通知管理员确认收款
+ * Body: { taskId }
+ */
+router.post('/api/user-paid', (req: Request, res: Response) => {
+  const { taskId } = req.body;
+  if (!taskId) {
+    res.status(400).json({ error: '缺少 taskId' });
     return;
   }
 
-  // 创建任务加入队列（携带 cardKey，成功后再消耗）
-  const task = createTask(email, password, totpKey, cardKey);
+  const minDelayMs = config.payment.claimDelaySec * 1000;
+  const result = markUserPaid(taskId, minDelayMs);
 
-  // 记录提交日志（明文）
-  const logId = logSubmit(email, password, totpKey, cardKey, undefined, task.id);
-  (task as any).logId = logId;
-
-  res.json({ taskId: task.id, message: '已提交，正在排队中' });
+  switch (result) {
+    case 'ok': {
+      const task = getTask(taskId);
+      if (task?.logId) updatePaymentStatus(task.logId, 'user_claimed');
+      res.json({ success: true, message: '已通知管理员，请稍候确认收款' });
+      return;
+    }
+    case 'not_found':
+      res.status(404).json({ error: '订单不存在或已过期' });
+      return;
+    case 'wrong_status':
+      res.status(400).json({ error: '订单状态异常，无法标记为已支付' });
+      return;
+    case 'too_early':
+      res.status(429).json({
+        error: `请稍后再试（提交后需等待至少 ${config.payment.claimDelaySec} 秒）`,
+      });
+      return;
+  }
 });
 
 /**
@@ -94,6 +150,18 @@ router.get('/api/queue', (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/payment-config - 获取支付展示配置（前端 URL 恢复时使用）
+ */
+router.get('/api/payment-config', (_req: Request, res: Response) => {
+  res.json({
+    qrUrl: config.payment.qrUrl,
+    amount: config.payment.amount,
+    countdownSec: config.payment.countdownSec,
+    claimDelaySec: config.payment.claimDelaySec,
+  });
+});
+
+/**
  * GET /api/health - 健康检查
  */
 router.get('/api/health', (req: Request, res: Response) => {
@@ -110,6 +178,87 @@ router.get('/api/health', (req: Request, res: Response) => {
  */
 router.get('/admin', (req: Request, res: Response) => {
   res.sendFile('admin.html', { root: 'public' });
+});
+
+/**
+ * GET /api/admin/payments - 获取待支付/待确认收款的任务列表
+ */
+router.get('/api/admin/payments', (req: Request, res: Response) => {
+  const pwd = req.headers['x-admin-password'] || req.query.pwd;
+  if (pwd !== config.adminPassword) {
+    res.status(401).json({ error: '密码错误' });
+    return;
+  }
+  res.json({ tasks: getPaymentPendingTasks() });
+});
+
+/**
+ * POST /api/admin/confirm-payment - 管理员确认收款，任务进入正式认证队列
+ * Body: { taskId }
+ */
+router.post('/api/admin/confirm-payment', (req: Request, res: Response) => {
+  const pwd = req.headers['x-admin-password'] || req.query.pwd;
+  if (pwd !== config.adminPassword) {
+    res.status(401).json({ error: '密码错误' });
+    return;
+  }
+  const { taskId } = req.body;
+  if (!taskId) {
+    res.status(400).json({ error: '缺少 taskId' });
+    return;
+  }
+
+  const result = confirmPaymentAndEnqueue(taskId);
+  switch (result) {
+    case 'ok': {
+      const task = getTask(taskId);
+      if (task?.logId) updatePaymentStatus(task.logId, 'confirmed');
+      res.json({ success: true, message: '收款已确认，任务已进入认证队列' });
+      return;
+    }
+    case 'not_found':
+      res.status(404).json({ error: '任务不存在或已过期' });
+      return;
+    case 'wrong_status':
+      res.status(400).json({ error: '任务状态不允许确认（可能已确认/已取消）' });
+      return;
+    case 'processor_not_ready':
+      res.status(503).json({ error: '认证服务未就绪，无法入队' });
+      return;
+  }
+});
+
+/**
+ * POST /api/admin/reject-payment - 管理员拒绝收款（未收到钱 / 误点）
+ * Body: { taskId, reason? }
+ */
+router.post('/api/admin/reject-payment', (req: Request, res: Response) => {
+  const pwd = req.headers['x-admin-password'] || req.query.pwd;
+  if (pwd !== config.adminPassword) {
+    res.status(401).json({ error: '密码错误' });
+    return;
+  }
+  const { taskId, reason } = req.body;
+  if (!taskId) {
+    res.status(400).json({ error: '缺少 taskId' });
+    return;
+  }
+
+  const result = rejectPayment(taskId, reason);
+  switch (result) {
+    case 'ok': {
+      const task = getTask(taskId);
+      if (task?.logId) updatePaymentStatus(task.logId, 'rejected');
+      res.json({ success: true, message: '订单已取消' });
+      return;
+    }
+    case 'not_found':
+      res.status(404).json({ error: '任务不存在或已过期' });
+      return;
+    case 'wrong_status':
+      res.status(400).json({ error: '任务状态不允许取消' });
+      return;
+  }
 });
 
 /**

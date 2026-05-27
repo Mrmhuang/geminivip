@@ -43,6 +43,9 @@ try {
 try {
   db.exec(`ALTER TABLE submit_logs ADD COLUMN task_id TEXT`);
 } catch (e) { /* 字段已存在则忽略 */ }
+try {
+  db.exec(`ALTER TABLE submit_logs ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'pending'`);
+} catch (e) { /* 字段已存在则忽略 */ }
 
 /**
  * 尝试标记卡密为已使用
@@ -120,11 +123,18 @@ export function updateBindStatus(id: number, bindcardStatus: string, message?: s
 }
 
 /**
+ * 更新支付状态（pending / user_claimed / confirmed / rejected / timeout）
+ */
+export function updatePaymentStatus(id: number, paymentStatus: string): void {
+  db.prepare('UPDATE submit_logs SET payment_status = ? WHERE id = ?').run(paymentStatus, id);
+}
+
+/**
  * 获取所有提交记录（Admin 用，包含全部信息）
  */
 export function getSubmitLogs(): any[] {
   return db.prepare(
-    'SELECT id, email, password, totp_key, card_key, offer_link, task_id, telegram_status, bindcard_status, status, message, created_at FROM submit_logs ORDER BY id DESC'
+    'SELECT id, email, password, totp_key, card_key, offer_link, task_id, telegram_status, bindcard_status, payment_status, status, message, created_at FROM submit_logs ORDER BY id DESC'
   ).all();
 }
 
