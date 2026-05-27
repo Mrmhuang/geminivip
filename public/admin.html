@@ -46,6 +46,24 @@
     .modal-box h3 { margin-bottom: 16px; }
     .modal-box .key-list { font-family: monospace; font-size: 14px; line-height: 2; background: #f8f9fa; padding: 16px; border-radius: 8px; user-select: all; }
     .modal-box .modal-actions { margin-top: 16px; display: flex; gap: 12px; justify-content: flex-end; }
+    /* 待确认收款面板 */
+    .pay-panel { background: #fff8f1; border: 1px solid #fbbf24; border-radius: 10px; padding: 16px 18px; margin: 16px 0; }
+    .pay-panel h3 { font-size: 14px; margin-bottom: 12px; color: #92400e; display: flex; align-items: center; gap: 8px; }
+    .pay-panel .pay-empty { color: #92400e; font-size: 12px; opacity: 0.7; padding: 6px 0; }
+    .pay-list { display: flex; flex-direction: column; gap: 8px; }
+    .pay-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: #fff; border: 1px solid #fde68a; border-radius: 8px; font-size: 12px; flex-wrap: wrap; }
+    .pay-item.awaiting { border-color: #ef4444; background: #fef2f2; }
+    .pay-item .pay-email { font-weight: 600; color: #1f2937; min-width: 200px; word-break: break-all; }
+    .pay-item .pay-meta { color: #6b7280; font-size: 11px; flex: 1; min-width: 180px; }
+    .pay-item .pay-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+    .pay-item .pay-badge.awaiting { background: #fee2e2; color: #991b1b; }
+    .pay-item .pay-badge.pending { background: #fef3c7; color: #92400e; }
+    .pay-item .pay-actions { display: flex; gap: 6px; margin-left: auto; }
+    .pay-item button.confirm { background: #16a34a; color: #fff; border: none; padding: 5px 12px; font-size: 12px; border-radius: 4px; cursor: pointer; }
+    .pay-item button.confirm:hover { background: #15803d; }
+    .pay-item button.confirm:disabled { opacity: 0.5; cursor: not-allowed; }
+    .pay-item button.reject { background: #fff; color: #991b1b; border: 1px solid #fca5a5; padding: 5px 12px; font-size: 12px; border-radius: 4px; cursor: pointer; }
+    .pay-item button.reject:hover { background: #fef2f2; }
   </style>
 </head>
 <body>
@@ -64,6 +82,13 @@
     <!-- 数据面板 -->
     <div id="panel" style="display:none;">
       <h1>📊 认证记录</h1>
+
+      <!-- 待确认收款 -->
+      <div class="pay-panel">
+        <h3>💰 待确认收款 <span id="payCount" style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;">0</span></h3>
+        <div id="payList" class="pay-list"></div>
+        <div id="payEmpty" class="pay-empty">暂无待确认订单</div>
+      </div>
 
       <!-- 工具区 -->
       <div class="tools-section">
@@ -177,12 +202,122 @@
       document.getElementById('loginBox').style.display = 'none';
       document.getElementById('panel').style.display = 'block';
       renderData(await res.json());
+      refreshPayments();
     }
 
     async function refreshData() {
       const res = await fetch('/api/admin/logs', { headers: { 'x-admin-password': password } });
       if (res.ok) renderData(await res.json());
     }
+
+    // ============ 待确认收款 ============
+    async function refreshPayments() {
+      if (!password) return;
+      try {
+        const res = await fetch('/api/admin/payments', { headers: { 'x-admin-password': password } });
+        if (!res.ok) return;
+        const data = await res.json();
+        renderPayments(data.tasks || []);
+      } catch (e) {}
+    }
+
+    function fmtDuration(ms) {
+      const s = Math.floor(ms / 1000);
+      if (s < 60) return s + ' 秒前';
+      const m = Math.floor(s / 60);
+      if (m < 60) return m + ' 分钟前';
+      const h = Math.floor(m / 60);
+      return h + ' 小时前';
+    }
+
+    function renderPayments(tasks) {
+      const listEl = document.getElementById('payList');
+      const emptyEl = document.getElementById('payEmpty');
+      const countEl = document.getElementById('payCount');
+
+      const awaitingCount = tasks.filter(t => t.status === 'awaiting_payment').length;
+      countEl.textContent = awaitingCount;
+      countEl.style.background = awaitingCount > 0 ? '#dc2626' : '#9ca3af';
+
+      if (tasks.length === 0) {
+        listEl.innerHTML = '';
+        emptyEl.style.display = 'block';
+        return;
+      }
+      emptyEl.style.display = 'none';
+      listEl.innerHTML = tasks.map(t => {
+        const isAwaiting = t.status === 'awaiting_payment';
+        const badge = isAwaiting
+          ? '<span class="pay-badge awaiting">⚠️ 用户已点"我已支付"</span>'
+          : '<span class="pay-badge pending">⏳ 等待用户付款</span>';
+        const claimedAt = t.paidClickedAt ? ` · 点击通知于 ${new Date(t.paidClickedAt).toLocaleTimeString('zh-CN')}` : '';
+        return `
+          <div class="pay-item ${isAwaiting ? 'awaiting' : ''}">
+            <div class="pay-email">${escapeHtml(t.email)}</div>
+            <div>${badge}</div>
+            <div class="pay-meta">提交于 ${fmtDuration(t.ageMs)}${claimedAt} · taskId: <code>${t.id}</code></div>
+            <div class="pay-actions">
+              <button class="confirm" onclick="confirmPayment('${t.id}', this)">✓ 确认收款</button>
+              <button class="reject" onclick="rejectPayment('${t.id}', this)">✗ 拒绝</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function confirmPayment(taskId, btn) {
+      if (!confirm('确认已收到该订单的款项？确认后将立即开始认证流程。')) return;
+      btn.disabled = true;
+      btn.textContent = '处理中...';
+      try {
+        const res = await fetch('/api/admin/confirm-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-password': password },
+          body: JSON.stringify({ taskId }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          btn.textContent = '✓ 已确认';
+          setTimeout(() => { refreshPayments(); refreshData(); }, 800);
+        } else {
+          alert(data.error || '操作失败');
+          btn.disabled = false;
+          btn.textContent = '✓ 确认收款';
+        }
+      } catch (e) {
+        alert('网络错误');
+        btn.disabled = false;
+        btn.textContent = '✓ 确认收款';
+      }
+    }
+
+    async function rejectPayment(taskId, btn) {
+      const reason = prompt('拒绝原因（可留空，会展示给用户）：', '未收到付款');
+      if (reason === null) return; // 用户取消
+      btn.disabled = true;
+      btn.textContent = '处理中...';
+      try {
+        const res = await fetch('/api/admin/reject-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-password': password },
+          body: JSON.stringify({ taskId, reason: reason || undefined }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          btn.textContent = '✓ 已取消';
+          setTimeout(() => { refreshPayments(); refreshData(); }, 800);
+        } else {
+          alert(data.error || '操作失败');
+          btn.disabled = false;
+          btn.textContent = '✗ 拒绝';
+        }
+      } catch (e) {
+        alert('网络错误');
+        btn.disabled = false;
+        btn.textContent = '✗ 拒绝';
+      }
+    }
+    // ============ 待确认收款 END ============
 
     function getBadge(status) {
       const map = {
@@ -387,8 +522,9 @@
       });
     }
 
-    // 自动刷新（每30秒）
+    // 自动刷新（每30秒刷一次数据表，每10秒刷一次待确认收款）
     setInterval(refreshData, 30000);
+    setInterval(refreshPayments, 10000);
 
     // 加载当前卡信息
     async function loadCardInfo() {
