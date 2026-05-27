@@ -5,13 +5,26 @@ export interface Task {
   email: string;
   password: string;
   totpKey: string;
-  cardKey: string; // 卡密，认证成功后才消耗
+  cardKey: string; // 卡密（兼容字段，微信支付模式下为 'wechat-pay'）
   offerLink?: string; // 认证成功后获取的 Google One Pro 链接
-  status: 'queued' | 'running' | 'processing' | 'auth_success' | 'bindcard_running' | 'success' | 'failed';
+  status:
+    | 'pending_payment'    // 用户已提交，等待付款（弹窗倒计时中）
+    | 'awaiting_payment'   // 用户已点"我已支付"，等待管理员确认
+    | 'payment_timeout'    // 长时间未确认支付，自动失败
+    | 'queued'
+    | 'running'
+    | 'processing'
+    | 'auth_success'
+    | 'bindcard_running'
+    | 'success'
+    | 'failed';
   message: string;
   createdAt: number;
   position?: number;
   jobId?: string; // Bot 返回的 Job ID，用于匹配异步结果
+  paidClickedAt?: number;       // 用户点击"我已支付"的时间戳
+  paymentConfirmedAt?: number;  // 管理员确认收款的时间戳
+  logId?: number;               // 关联的 submit_logs 记录 ID
 }
 
 // 内存任务存储
@@ -53,6 +66,105 @@ export function createTask(email: string, password: string, totpKey: string, car
 }
 
 /**
+ * 创建"待付款"任务：用户提交后立即创建，但暂不入队。
+ * 用户付款 → 点"我已支付" → admin 确认 → 才会真正进入认证队列。
+ */
+export function createPendingPaymentTask(email: string, password: string, totpKey: string, cardKey: string): Task {
+  const task: Task = {
+    id: crypto.randomBytes(6).toString('hex'),
+    email,
+    password,
+    totpKey,
+    cardKey,
+    status: 'pending_payment',
+    message: '请按提示完成支付',
+    createdAt: Date.now(),
+  };
+  tasks.set(task.id, task);
+  return task;
+}
+
+/**
+ * 用户点击"我已支付"，将任务从 pending_payment 转为 awaiting_payment
+ * @returns 'ok' | 'not_found' | 'wrong_status' | 'too_early'
+ */
+export function markUserPaid(taskId: string, minDelayMs: number): 'ok' | 'not_found' | 'wrong_status' | 'too_early' {
+  const task = tasks.get(taskId);
+  if (!task) return 'not_found';
+  if (task.status === 'awaiting_payment') return 'ok'; // 幂等
+  if (task.status !== 'pending_payment') return 'wrong_status';
+  if (Date.now() - task.createdAt < minDelayMs) return 'too_early';
+  task.status = 'awaiting_payment';
+  task.message = '已通知管理员确认收款，请稍候...';
+  task.paidClickedAt = Date.now();
+  return 'ok';
+}
+
+/**
+ * 管理员确认收款 → 将任务加入正式队列
+ * @returns 'ok' | 'not_found' | 'wrong_status' | 'processor_not_ready'
+ */
+export function confirmPaymentAndEnqueue(taskId: string): 'ok' | 'not_found' | 'wrong_status' | 'processor_not_ready' {
+  const task = tasks.get(taskId);
+  if (!task) return 'not_found';
+  if (!['pending_payment', 'awaiting_payment'].includes(task.status)) return 'wrong_status';
+  if (!processor) return 'processor_not_ready';
+  task.status = 'queued';
+  task.message = '收款已确认，排队中...';
+  task.paymentConfirmedAt = Date.now();
+  queue.push(task);
+  task.position = queue.length;
+  processNext();
+  return 'ok';
+}
+
+/**
+ * 管理员拒绝收款（未收到钱 / 误点）
+ */
+export function rejectPayment(taskId: string, reason?: string): 'ok' | 'not_found' | 'wrong_status' {
+  const task = tasks.get(taskId);
+  if (!task) return 'not_found';
+  if (!['pending_payment', 'awaiting_payment'].includes(task.status)) return 'wrong_status';
+  task.status = 'failed';
+  task.message = reason || '管理员未确认收款，订单已取消';
+  task.password = '';
+  task.totpKey = '';
+  return 'ok';
+}
+
+/**
+ * 获取所有待处理的支付任务（admin 列表用）
+ */
+export function getPaymentPendingTasks(): Array<{
+  id: string;
+  email: string;
+  status: string;
+  createdAt: number;
+  paidClickedAt?: number;
+  ageMs: number;
+}> {
+  const result: Array<any> = [];
+  for (const task of tasks.values()) {
+    if (task.status === 'pending_payment' || task.status === 'awaiting_payment') {
+      result.push({
+        id: task.id,
+        email: task.email,
+        status: task.status,
+        createdAt: task.createdAt,
+        paidClickedAt: task.paidClickedAt,
+        ageMs: Date.now() - task.createdAt,
+      });
+    }
+  }
+  // awaiting_payment 优先排前面
+  result.sort((a, b) => {
+    if (a.status !== b.status) return a.status === 'awaiting_payment' ? -1 : 1;
+    return a.createdAt - b.createdAt;
+  });
+  return result;
+}
+
+/**
  * 获取任务状态（对外安全版本，不暴露敏感信息）
  */
 export function getTaskStatus(taskId: string): { status: string; message: string; position?: number } | null {
@@ -74,7 +186,7 @@ export function getTask(taskId: string): Task | undefined {
  */
 export function isEmailActive(email: string): boolean {
   for (const task of tasks.values()) {
-    if (task.email === email && !['success', 'failed'].includes(task.status)) {
+    if (task.email === email && !['success', 'failed', 'payment_timeout'].includes(task.status)) {
       return true;
     }
   }
@@ -221,3 +333,24 @@ setInterval(() => {
     if (task.createdAt < expiry) tasks.delete(id);
   }
 }, 10 * 60 * 1000);
+
+/**
+ * 支付待确认超时（30分钟）：用户提交后超过 30 分钟仍未被确认收款，
+ * 自动标记为 payment_timeout，避免无限挂起。
+ */
+const PAYMENT_TIMEOUT_MS = 30 * 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const task of tasks.values()) {
+    if (
+      (task.status === 'pending_payment' || task.status === 'awaiting_payment') &&
+      now - task.createdAt > PAYMENT_TIMEOUT_MS
+    ) {
+      console.warn(`[TaskQueue] 任务 ${task.id} 支付确认超时（状态: ${task.status}），自动取消`);
+      task.status = 'payment_timeout';
+      task.message = '支付确认超时（超过30分钟），订单已取消，请重新提交。';
+      task.password = '';
+      task.totpKey = '';
+    }
+  }
+}, 60 * 1000);
