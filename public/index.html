@@ -8,6 +8,92 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/antd@5/dist/reset.min.css" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='1.5'%3E%3Cpath d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/%3E%3C/svg%3E" />
+    <style>
+      /* 支付弹窗样式 */
+      .pay-overlay {
+        position: fixed; inset: 0;
+        background: rgba(20, 24, 40, 0.6);
+        backdrop-filter: blur(4px);
+        display: none;
+        align-items: center; justify-content: center;
+        z-index: 9999;
+      }
+      .pay-overlay.show { display: flex; }
+      .pay-modal {
+        background: #fff; border-radius: 16px;
+        padding: 28px 24px 24px;
+        width: 92%; max-width: 380px;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+        text-align: center;
+        position: relative;
+      }
+      .pay-modal h2 {
+        font-size: 18px; font-weight: 600;
+        color: #1f2937; margin-bottom: 4px;
+      }
+      .pay-amount {
+        font-size: 28px; font-weight: 700;
+        color: #16a34a; margin: 6px 0 16px;
+      }
+      .pay-amount .yen { font-size: 16px; vertical-align: super; }
+      .pay-qr-wrap {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 14px;
+        display: inline-block;
+        margin-bottom: 14px;
+      }
+      .pay-qr-wrap img {
+        width: 220px; height: 220px;
+        display: block;
+        object-fit: contain;
+      }
+      .pay-countdown {
+        font-size: 14px; color: #475569;
+        margin-bottom: 14px;
+      }
+      .pay-countdown.expired { color: #dc2626; }
+      .pay-countdown strong { color: #1f2937; font-size: 16px; margin: 0 2px; }
+      .pay-tips {
+        font-size: 12px; color: #64748b;
+        background: #f1f5f9;
+        border-radius: 8px;
+        padding: 10px 12px;
+        text-align: left;
+        line-height: 1.7;
+        margin-bottom: 16px;
+      }
+      .pay-tips ol { margin: 0; padding-left: 18px; }
+      .pay-paid-btn {
+        width: 100%;
+        height: 44px;
+        font-size: 15px; font-weight: 600;
+        background: #3b5bdb; color: #fff;
+        border: none; border-radius: 10px;
+        cursor: pointer;
+        transition: opacity .2s, background .2s;
+      }
+      .pay-paid-btn:disabled {
+        background: #cbd5e1; color: #fff;
+        cursor: not-allowed;
+      }
+      .pay-paid-btn.expired-warn {
+        background: #f59e0b;
+      }
+      .pay-close {
+        position: absolute; top: 12px; right: 14px;
+        background: none; border: none;
+        font-size: 22px; color: #94a3b8;
+        cursor: pointer; line-height: 1;
+      }
+      .pay-close:hover { color: #1f2937; }
+      .pay-err {
+        margin-top: 10px;
+        color: #dc2626; font-size: 12px;
+        min-height: 14px;
+      }
+    </style>
   </head>
   <body>
     <div class="container">
@@ -160,6 +246,32 @@
       </div> -->
     </div>
 
+    <!-- 微信支付弹窗 -->
+    <div class="pay-overlay" id="payOverlay">
+      <div class="pay-modal">
+        <button class="pay-close" onclick="closePayModal()" title="关闭">×</button>
+        <h2>微信扫码支付</h2>
+        <div class="pay-amount"><span class="yen">¥</span><span id="payAmount">--</span></div>
+        <div class="pay-qr-wrap">
+          <img id="payQrImg" src="" alt="微信收款码" />
+        </div>
+        <div class="pay-countdown" id="payCountdown">
+          请在 <strong id="payCountdownTime">3:00</strong> 内完成支付
+        </div>
+        <div class="pay-tips">
+          <ol>
+            <li>使用<strong>微信扫码</strong>支付指定金额</li>
+            <li>支付完成后，点击下方"我已支付"按钮通知管理员</li>
+            <li>管理员核对收款后会立即开始为您认证</li>
+          </ol>
+        </div>
+        <button class="pay-paid-btn" id="payPaidBtn" disabled onclick="iHavePaid()">
+          请等待 <span id="payClaimDelay">60</span> 秒后点击
+        </button>
+        <div class="pay-err" id="payErr"></div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
@@ -185,17 +297,15 @@
             });
             const data = await res.json();
             if (!res.ok) {
-              form.setFields([{ name: 'cardKey', errors: [data.error || '提交失败'] }]);
+              form.setFields([{ name: 'totpKey', errors: [data.error || '提交失败'] }]);
               setLoading(false);
               return;
             }
             setSubmitted(true);
-            document.getElementById('formRoot').style.display = 'none';
-            document.getElementById('status').style.display = 'block';
-            showQueryLink(data.taskId);
-            startPolling(data.taskId);
+            // 显示支付弹窗，传递 taskId 和支付参数
+            openPayModal(data.taskId, data.payment, Date.now());
           } catch (err) {
-            form.setFields([{ name: 'cardKey', errors: ['网络错误，请重试'] }]);
+            form.setFields([{ name: 'totpKey', errors: ['网络错误，请重试'] }]);
             setLoading(false);
           }
         };
@@ -251,21 +361,9 @@
                 <Input placeholder="如: fssy mbvb 4rkm 5p4w hgf4 hivg xwxy c7ig" />
               </Form.Item>
 
-              <Form.Item
-                label="卡密"
-                name="cardKey"
-                extra="拍下宝贝卖家会提供"
-                rules={[
-                  { required: true, message: '请输入卡密' },
-                  { pattern: /^[A-Z0-9]{8}-[a-f0-9]{8}$/i, message: '卡密格式不正确' },
-                ]}
-              >
-                <Input placeholder="如: A3KX9MPQ-f7c2b1d8" />
-              </Form.Item>
-
               <Form.Item>
                 <Button type="primary" htmlType="submit" loading={loading} block style={{ height: 48, fontWeight: 600 }}>
-                  提交认证
+                  提交订单
                 </Button>
               </Form.Item>
             </Form>
@@ -285,19 +383,36 @@
         } catch(e) {}
       })();
 
-      // 从 URL 参数恢复轮询（用户通过链接回来查看进度）
-      (function() {
+      // 从 URL 参数恢复（用户通过链接回来查看进度）
+      (async function() {
         const params = new URLSearchParams(window.location.search);
         const taskId = params.get('taskId');
-        if (taskId) {
-          document.getElementById('formRoot').style.display = 'none';
-          document.getElementById('status').style.display = 'block';
-          document.querySelector('.benefits').style.display = 'none';
-          document.querySelector('.guide-link').style.display = 'none';
-          document.getElementById('queueInfo').style.display = 'none';
-          showQueryLink(taskId);
-          startPolling(taskId);
+        if (!taskId) return;
+
+        // 先查询任务当前状态
+        let st = null;
+        try {
+          const res = await fetch('/api/status/' + taskId);
+          if (res.ok) st = await res.json();
+        } catch (e) {}
+
+        // 如果还在 pending_payment（未点"我已支付"），尝试拉起支付弹窗
+        if (st && st.status === 'pending_payment') {
+          // 注意：URL 恢复时拿不到原始 startAt，按"现在"重新启动倒计时
+          // （只要 task 仍存在于内存中且未超时，就允许用户继续付款 + 点击通知）
+          try {
+            const cfgRes = await fetch('/api/payment-config');
+            const payment = cfgRes.ok ? await cfgRes.json() : { qrUrl: '/wechat-qr.png', amount: '--', countdownSec: 180, claimDelaySec: 60 };
+            openPayModal(taskId, payment, Date.now());
+          } catch (e) {
+            // 拿不到配置就直接进入状态面板
+            showStatusPanel(taskId);
+          }
+          return;
         }
+
+        // 其他状态 → 直接进入状态面板
+        showStatusPanel(taskId);
       })();
 
       // 显示查询链接
@@ -336,7 +451,14 @@
             return;
           }
           const data = await res.json();
-          if (data.status === 'queued') {
+          if (data.status === 'pending_payment') {
+            updateStatus('payment', '等待您完成支付', '请通过弹窗中的微信收款码完成付款，并点击"我已支付"按钮。');
+          } else if (data.status === 'awaiting_payment') {
+            updateStatus('payment', '✅ 已通知管理员', '我们已收到您的付款通知，管理员核对后会立即开始认证流程（通常 1~10 分钟）。请稍候。');
+          } else if (data.status === 'payment_timeout') {
+            updateStatus('failed', '支付确认超时', '订单已超过 30 分钟未确认，已自动取消。如已付款请联系卖家退款，或重新提交订单。');
+            if (pollTimer) clearInterval(pollTimer);
+          } else if (data.status === 'queued') {
             updateStatus('queued', '排队中...', data.message, data.position ? '前面还有 ' + (data.position - 1) + ' 个任务' : '');
           } else if (data.status === 'running') {
             updateStatus('running', '执行中...', '正在与认证服务器交互，请稍候');
@@ -348,7 +470,7 @@
             updateStatus('success', '🎉 全部完成！', '会员绑卡成功！Google One AI Premium 已激活。可前往 <a href="https://one.google.com/settings" target="_blank">Google One 设置页面</a> 查看订阅状态。');
             if (pollTimer) clearInterval(pollTimer);
           } else if (data.status === 'failed') {
-            updateStatus('failed', '操作失败', '流程遇到问题，请联系客服处理。');
+            updateStatus('failed', '操作失败', data.message || '流程遇到问题，请联系客服处理。');
             if (pollTimer) clearInterval(pollTimer);
           }
         } catch (err) {}
@@ -361,6 +483,7 @@
           running: '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>',
           processing: '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>',
           bindcard: '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="1.5"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>',
+          payment: '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.5"><path d="M21 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
           success: '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
           failed: '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
         };
@@ -381,13 +504,140 @@
             msgEl.insertAdjacentHTML(
               'beforeend',
               '<div style="margin-top:12px; padding:10px 12px; background:#fef2f2; border:1px solid #fecaca; border-left:4px solid #dc2626; border-radius:8px; color:#7f1d1d; font-size:13px; line-height:1.7; text-align:left;">' +
-                '认证未通过，您可以<strong>重新提交再次尝试</strong>；如有疑问请<strong>联系闲鱼卖家</strong>协助处理。' +
+                '订单未通过，您可以<strong>重新提交再次尝试</strong>；如有疑问请<strong>联系卖家</strong>协助处理。' +
               '</div>'
             );
             msgEl.dataset.failHintAdded = '1';
           }
         }
       }
+
+      // ============ 微信支付弹窗逻辑 ============
+      let payCtx = null;              // { taskId, countdownSec, claimDelaySec, startAt }
+      let payCountdownTimer = null;
+      let payClaimDelayTimer = null;
+
+      function showStatusPanel(taskId) {
+        document.getElementById('formRoot').style.display = 'none';
+        document.getElementById('status').style.display = 'block';
+        const benefits = document.querySelector('.benefits');
+        if (benefits) benefits.style.display = 'none';
+        const guideLink = document.querySelector('.guide-link');
+        if (guideLink) guideLink.style.display = 'none';
+        const queueInfo = document.getElementById('queueInfo');
+        if (queueInfo) queueInfo.style.display = 'none';
+        showQueryLink(taskId);
+        startPolling(taskId);
+      }
+
+      function openPayModal(taskId, payment, startAt) {
+        payCtx = {
+          taskId,
+          countdownSec: payment.countdownSec || 180,
+          claimDelaySec: payment.claimDelaySec || 60,
+          startAt: startAt || Date.now(),
+        };
+        document.getElementById('payAmount').textContent = payment.amount || '--';
+        document.getElementById('payQrImg').src = payment.qrUrl || '/wechat-qr.png';
+        document.getElementById('payClaimDelay').textContent = payCtx.claimDelaySec;
+        document.getElementById('payErr').textContent = '';
+        document.getElementById('payOverlay').classList.add('show');
+
+        startPayCountdown();
+        startClaimDelay();
+      }
+
+      function closePayModal() {
+        document.getElementById('payOverlay').classList.remove('show');
+        if (payCountdownTimer) { clearInterval(payCountdownTimer); payCountdownTimer = null; }
+        if (payClaimDelayTimer) { clearInterval(payClaimDelayTimer); payClaimDelayTimer = null; }
+      }
+
+      function formatMMSS(sec) {
+        if (sec < 0) sec = 0;
+        const m = Math.floor(sec / 60);
+        const s = sec % 60;
+        return m + ':' + (s < 10 ? '0' + s : s);
+      }
+
+      function startPayCountdown() {
+        if (payCountdownTimer) clearInterval(payCountdownTimer);
+        const el = document.getElementById('payCountdown');
+        const timeEl = document.getElementById('payCountdownTime');
+
+        const tick = () => {
+          const elapsed = Math.floor((Date.now() - payCtx.startAt) / 1000);
+          const remain = payCtx.countdownSec - elapsed;
+          if (remain > 0) {
+            timeEl.textContent = formatMMSS(remain);
+            el.classList.remove('expired');
+            el.innerHTML = '请在 <strong id="payCountdownTime">' + formatMMSS(remain) + '</strong> 内完成支付';
+          } else {
+            el.classList.add('expired');
+            el.innerHTML = '⚠️ 已超过建议支付时间，如已付款请尽快点击下方按钮';
+            clearInterval(payCountdownTimer);
+            payCountdownTimer = null;
+            const btn = document.getElementById('payPaidBtn');
+            btn.classList.add('expired-warn');
+          }
+        };
+        tick();
+        payCountdownTimer = setInterval(tick, 1000);
+      }
+
+      function startClaimDelay() {
+        if (payClaimDelayTimer) clearInterval(payClaimDelayTimer);
+        const btn = document.getElementById('payPaidBtn');
+        const delayEl = document.getElementById('payClaimDelay');
+
+        const tick = () => {
+          const elapsed = Math.floor((Date.now() - payCtx.startAt) / 1000);
+          const remain = payCtx.claimDelaySec - elapsed;
+          if (remain > 0) {
+            btn.disabled = true;
+            delayEl.textContent = remain;
+            btn.innerHTML = '请等待 <span id="payClaimDelay">' + remain + '</span> 秒后点击';
+          } else {
+            btn.disabled = false;
+            btn.textContent = '✅ 我已支付，通知管理员确认';
+            clearInterval(payClaimDelayTimer);
+            payClaimDelayTimer = null;
+          }
+        };
+        tick();
+        payClaimDelayTimer = setInterval(tick, 1000);
+      }
+
+      async function iHavePaid() {
+        const btn = document.getElementById('payPaidBtn');
+        const errEl = document.getElementById('payErr');
+        btn.disabled = true;
+        btn.textContent = '提交中...';
+        errEl.textContent = '';
+        try {
+          const res = await fetch('/api/user-paid', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ taskId: payCtx.taskId }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) {
+            errEl.textContent = data.error || '提交失败，请重试';
+            btn.disabled = false;
+            btn.textContent = '✅ 我已支付，通知管理员确认';
+            return;
+          }
+          // 提交成功 → 关闭弹窗、进入 status 面板
+          const taskId = payCtx.taskId;
+          closePayModal();
+          showStatusPanel(taskId);
+        } catch (err) {
+          errEl.textContent = '网络错误，请重试';
+          btn.disabled = false;
+          btn.textContent = '✅ 我已支付，通知管理员确认';
+        }
+      }
+      // ============ 微信支付弹窗逻辑 END ============
     </script>
   </body>
 </html>
