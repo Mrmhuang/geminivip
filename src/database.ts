@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 if (!fs.existsSync(DATA_DIR)) {
@@ -29,6 +30,24 @@ db.exec(`CREATE TABLE IF NOT EXISTS submit_logs (
   message TEXT,
   created_at TEXT NOT NULL
 )`);
+
+// 订单表
+db.exec(`CREATE TABLE IF NOT EXISTS orders (
+  order_id TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  password TEXT NOT NULL,
+  totp_key TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  channel TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  task_id TEXT,
+  task_status TEXT,
+  payment_trade_no TEXT,
+  paid_at TEXT,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+)`);
+
 
 // 兼容已有数据库：如果表已存在但缺少新字段则 ALTER TABLE 添加
 try {
@@ -150,4 +169,125 @@ export function getSubmitLogById(id: number): any | null {
  */
 export function getSuccessLogs(): { id: number; email: string; link: string; created_at: string }[] {
   return db.prepare('SELECT id, email, link, created_at FROM success_logs ORDER BY id DESC').all() as any;
+}
+
+// ============================================
+// 订单相关
+// ============================================
+
+export interface OrderRecord {
+  order_id: string;
+  email: string;
+  password: string;
+  totp_key: string;
+  amount: number;
+  channel: string;
+  status: string;
+  task_id: string | null;
+  task_status: string | null;
+  payment_trade_no: string | null;
+  paid_at: string | null;
+  created_at: string;
+  expires_at: string;
+}
+
+/**
+ * 生成订单号: 时间戳 + 随机串
+ */
+export function generateOrderId(): string {
+  const ts = Date.now().toString(36);
+  const rand = crypto.randomBytes(4).toString('hex');
+  return `GV${ts}${rand}`.toUpperCase();
+}
+
+/**
+ * 创建订单
+ */
+export function createOrder(params: {
+  orderId: string;
+  email: string;
+  password: string;
+  totpKey: string;
+  amount: number;
+  channel: string;
+  expiresAt: string;
+}): void {
+  db.prepare(
+    'INSERT INTO orders (order_id, email, password, totp_key, amount, channel, status, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    params.orderId,
+    params.email,
+    params.password,
+    params.totpKey,
+    params.amount,
+    params.channel,
+    'pending',
+    new Date().toISOString(),
+    params.expiresAt
+  );
+}
+
+/**
+ * 获取订单
+ */
+export function getOrder(orderId: string): OrderRecord | null {
+  return db.prepare('SELECT * FROM orders WHERE order_id = ?').get(orderId) as OrderRecord | null;
+}
+
+/**
+ * 更新订单状态
+ */
+export function updateOrderStatus(orderId: string, status: string, extra?: {
+  paymentTradeNo?: string;
+  paidAt?: string;
+  taskId?: string;
+  taskStatus?: string;
+}): void {
+  let sql = 'UPDATE orders SET status = ?';
+  const params: any[] = [status];
+
+  if (extra?.paymentTradeNo) {
+    sql += ', payment_trade_no = ?';
+    params.push(extra.paymentTradeNo);
+  }
+  if (extra?.paidAt) {
+    sql += ', paid_at = ?';
+    params.push(extra.paidAt);
+  }
+  if (extra?.taskId) {
+    sql += ', task_id = ?';
+    params.push(extra.taskId);
+  }
+  if (extra?.taskStatus) {
+    sql += ', task_status = ?';
+    params.push(extra.taskStatus);
+  }
+
+  sql += ' WHERE order_id = ?';
+  params.push(orderId);
+
+  db.prepare(sql).run(...params);
+}
+
+/**
+ * 标记过期订单
+ */
+export function expireOrder(orderId: string): void {
+  db.prepare("UPDATE orders SET status = 'expired' WHERE order_id = ? AND status = 'pending'").run(orderId);
+}
+
+/**
+ * 获取所有订单（Admin）
+ */
+export function getAllOrders(limit: number = 100): OrderRecord[] {
+  return db.prepare('SELECT * FROM orders ORDER BY created_at DESC LIMIT ?').all(limit) as OrderRecord[];
+}
+
+/**
+ * 清理过期的 pending 订单（定时调用）
+ */
+export function expireStaleOrders(): number {
+  const now = new Date().toISOString();
+  const result = db.prepare("UPDATE orders SET status = 'expired' WHERE status = 'pending' AND expires_at < ?").run(now);
+  return result.changes;
 }

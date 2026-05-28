@@ -5,7 +5,8 @@ export interface Task {
   email: string;
   password: string;
   totpKey: string;
-  cardKey: string; // 卡密，认证成功后才消耗
+  cardKey?: string; // 卡密（旧流程），支付流程下为空
+  orderId?: string; // 订单号（支付流程）
   offerLink?: string; // 认证成功后获取的 Google One Pro 链接
   status: 'queued' | 'running' | 'processing' | 'auth_success' | 'bindcard_running' | 'success' | 'failed';
   message: string;
@@ -34,13 +35,14 @@ export function isProcessorReady(): boolean {
 /**
  * 创建新任务并加入队列
  */
-export function createTask(email: string, password: string, totpKey: string, cardKey: string): Task {
+export function createTask(email: string, password: string, totpKey: string, cardKey?: string, orderId?: string): Task {
   const task: Task = {
     id: crypto.randomBytes(6).toString('hex'),
     email,
     password,
     totpKey,
     cardKey,
+    orderId,
     status: 'queued',
     message: '排队中...',
     createdAt: Date.now(),

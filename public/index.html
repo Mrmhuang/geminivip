@@ -34,48 +34,15 @@
       <div class="benefits">
         <h3>认证成功后你将获得（价值 $19.99/月，免费使用一年）</h3>
         <ul>
-          <li><svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>尊享 Gemini 3.1 Pro 模型和高级推理功能</li>
-          <li><svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>获享 4 倍用量限额，用量限额是未订阅 Google AI 方案时的 4 倍</li>
-            <li><svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
-              使用 图片生成、视频生成、Deep Research、NotebookLM 等功能
-            </li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>尊享 Gemini 3.1 Pro 模型和高级推理功能</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>获享 4 倍用量限额，用量限额是未订阅 Google AI 方案时的 4 倍</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>使用 图片生成、视频生成、Deep Research、NotebookLM 等功能</li>
         </ul>
       </div>
 
       <a href="/guide.html" target="_blank" class="guide-link">
         <span class="guide-warn">⚠️ 提交前必须完成准备工作，
         <span class="guide-cta">查看准备教程 →</span>
-
         </span>
       </a>
 
@@ -84,17 +51,32 @@
         <span>当前排队: <strong id="queueCount">0</strong> 人</span>
       </div>
 
-      <!-- React 表单挂载点 -->
+      <!-- Step 1: 表单 -->
       <div id="formRoot"></div>
 
-      <!-- 状态面板 -->
+      <!-- Step 2: 支付二维码 -->
+      <div id="paymentStep" style="display: none">
+        <div class="status-card" style="text-align: center;">
+          <h2 style="margin-bottom: 8px;">请扫码支付</h2>
+          <p style="color: #666; margin-bottom: 16px;">使用<strong id="channelName">微信</strong>扫描下方二维码完成支付</p>
+          <div id="qrCanvas" style="display: inline-block; padding: 16px; background: #fff; border-radius: 12px; border: 1px solid #e5e7eb;"></div>
+          <div style="margin-top: 16px;">
+            <p style="font-size: 24px; font-weight: 700; color: #3b5bdb; margin: 0;">¥<span id="payAmount">29.9</span></p>
+            <p id="payCountdown" style="font-size: 13px; color: #999; margin-top: 4px;">订单将在 15:00 后过期</p>
+          </div>
+          <div style="margin-top: 16px; padding: 12px; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
+            <p style="margin: 0; font-size: 13px; color: #166534;">💡 支付成功后将自动开始认证流程，无需其他操作</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: 任务状态 -->
       <div id="status" style="display: none">
         <div class="status-card">
           <div id="statusIcon" class="status-icon"></div>
           <h2 id="statusTitle">排队中...</h2>
           <p id="statusMessage">请等待，认证正在进行中</p>
           <p id="statusPosition" class="position"></p>
-          <!-- 查询链接区域 -->
           <div id="queryLinkBox" style="display:none; margin-top: 20px; padding: 16px; background: #f0f7ff; border-radius: 10px; text-align: left;">
             <p style="font-size: 13px; color: #555; margin-bottom: 8px;">📋 您可以通过以下链接随时查看进度：</p>
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -105,59 +87,12 @@
               <p style="margin: 0 0 6px; font-weight: 600; color: #b91c1c;">⏰ 请耐心等待 10 ~ 20 分钟</p>
               <ul style="margin: 0 0 0 18px; padding: 0;">
                 <li>请<strong>务必复制并保存上面的链接</strong>，稍后通过该链接查询认证结果，<strong>无需在此停留等待</strong>。</li>
-                <li>若最终显示<strong>失败</strong>，可<strong>重新提交</strong>再次尝试（卡密未消耗）。</li>
                 <li>如有任何疑问，请<strong>联系闲鱼卖家</strong>，我们会尽快为您处理。</li>
               </ul>
             </div>
           </div>
         </div>
       </div>
-
-      <!-- <div class="trust-footer">
-        <div class="trust-item">
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
-          <span>安全至上</span>
-        </div>
-        <div class="trust-divider"></div>
-        <div class="trust-item">
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          </svg>
-          <span>快速</span>
-        </div>
-        <div class="trust-divider"></div>
-        <div class="trust-item">
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-            <polyline points="22 4 12 14.01 9 11.01" />
-          </svg>
-          <span>不做存储</span>
-        </div>
-      </div> -->
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
@@ -165,37 +100,39 @@
     <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/antd@5/dist/antd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1/build/qrcode.min.js"></script>
 
     <script type="text/babel">
-      const { Form, Input, Button, ConfigProvider, App: AntApp } = antd;
+      const { Form, Input, Button, ConfigProvider, Radio, App: AntApp } = antd;
       const { useState } = React;
 
       function AuthForm() {
         const [form] = Form.useForm();
         const [loading, setLoading] = useState(false);
-        const [submitted, setSubmitted] = useState(false);
 
         const onFinish = async (values) => {
           setLoading(true);
           try {
-            const res = await fetch('/api/submit', {
+            const res = await fetch('/api/create-order', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(values),
             });
             const data = await res.json();
             if (!res.ok) {
-              form.setFields([{ name: 'cardKey', errors: [data.error || '提交失败'] }]);
+              form.setFields([{ name: 'totpKey', errors: [data.error || '提交失败'] }]);
               setLoading(false);
               return;
             }
-            setSubmitted(true);
+            // 成功 → 显示支付二维码
             document.getElementById('formRoot').style.display = 'none';
-            document.getElementById('status').style.display = 'block';
-            showQueryLink(data.taskId);
-            startPolling(data.taskId);
+            document.querySelector('.benefits').style.display = 'none';
+            document.querySelector('.guide-link').style.display = 'none';
+            document.getElementById('queueInfo').style.display = 'none';
+            window._usdtAmount = data.usdtAmount; // USDT 专用
+            showPaymentQR(data.orderId, data.qrCodeUrl || data.walletAddress, data.amount, data.expiresAt, values.channel);
           } catch (err) {
-            form.setFields([{ name: 'cardKey', errors: ['网络错误，请重试'] }]);
+            form.setFields([{ name: 'totpKey', errors: ['网络错误，请重试'] }]);
             setLoading(false);
           }
         };
@@ -208,6 +145,7 @@
               onFinish={onFinish}
               validateTrigger={['onBlur', 'onChange']}
               size="large"
+              initialValues={{ channel: 'wechat' }}
             >
               <Form.Item
                 label="谷歌邮箱 (Gmail)"
@@ -252,20 +190,21 @@
               </Form.Item>
 
               <Form.Item
-                label="卡密"
-                name="cardKey"
-                extra="拍下宝贝卖家会提供"
-                rules={[
-                  { required: true, message: '请输入卡密' },
-                  { pattern: /^[A-Z0-9]{8}-[a-f0-9]{8}$/i, message: '卡密格式不正确' },
-                ]}
+                label="支付方式"
+                name="channel"
+                rules={[{ required: true, message: '请选择支付方式' }]}
               >
-                <Input placeholder="如: A3KX9MPQ-f7c2b1d8" />
+                <Radio.Group>
+                  <Radio.Button value="wechat">微信支付</Radio.Button>
+                  <Radio.Button value="alipay">支付宝</Radio.Button>
+                  <Radio.Button value="usdt_bsc">USDT (BSC)</Radio.Button>
+                  <Radio.Button value="usdt_eth">USDT (ETH)</Radio.Button>
+                </Radio.Group>
               </Form.Item>
 
               <Form.Item>
                 <Button type="primary" htmlType="submit" loading={loading} block style={{ height: 48, fontWeight: 600 }}>
-                  提交认证
+                  提交并支付
                 </Button>
               </Form.Item>
             </Form>
@@ -296,18 +235,146 @@
           document.querySelector('.guide-link').style.display = 'none';
           document.getElementById('queueInfo').style.display = 'none';
           showQueryLink(taskId);
-          startPolling(taskId);
+          startTaskPolling(taskId);
         }
       })();
 
-      // 显示查询链接
+      // ============================================
+      // Step 2: 支付二维码
+      // ============================================
+
+      let paymentPollTimer = null;
+      let countdownTimer = null;
+
+      function showPaymentQR(orderId, qrCodeUrl, amount, expiresAt, channel) {
+        document.getElementById('paymentStep').style.display = 'block';
+
+        const isUsdt = channel.startsWith('usdt_');
+
+        if (isUsdt) {
+          // USDT: 显示钱包地址和精确金额
+          const network = channel === 'usdt_bsc' ? 'BSC (BEP-20)' : 'Ethereum (ERC-20)';
+          document.getElementById('channelName').textContent = 'USDT - ' + network;
+          document.getElementById('payAmount').textContent = window._usdtAmount + ' USDT';
+
+          // 地址二维码
+          const canvas = document.createElement('canvas');
+          QRCode.toCanvas(canvas, qrCodeUrl, { width: 220, margin: 2 }, function(err) {
+            if (err) {
+              document.getElementById('qrCanvas').innerHTML = '<p style="color:red;">二维码生成失败</p>';
+              return;
+            }
+            document.getElementById('qrCanvas').innerHTML = '';
+            document.getElementById('qrCanvas').appendChild(canvas);
+          });
+
+          // 显示地址和金额信息
+          document.getElementById('qrCanvas').insertAdjacentHTML('afterend',
+            '<div style="margin-top:12px; text-align:left; font-size:12px; background:#f9fafb; padding:12px; border-radius:8px; word-break:break-all;">' +
+            '<p style="margin:0 0 6px; color:#666;">收款地址：</p>' +
+            '<p style="margin:0 0 10px; font-family:monospace; font-size:11px; color:#333;">' + qrCodeUrl + '</p>' +
+            '<p style="margin:0 0 4px; color:#666;">转账金额（必须精确匹配）：</p>' +
+            '<p style="margin:0; font-size:18px; font-weight:700; color:#f59e0b;">' + window._usdtAmount + ' USDT</p>' +
+            '<p style="margin:6px 0 0; color:#dc2626; font-size:11px;">⚠️ 请务必转入精确金额，否则无法自动确认</p>' +
+            '</div>'
+          );
+        } else {
+          document.getElementById('channelName').textContent = channel === 'wechat' ? '微信' : '支付宝';
+          document.getElementById('payAmount').textContent = (amount / 100).toFixed(2);
+
+          const canvas = document.createElement('canvas');
+          QRCode.toCanvas(canvas, qrCodeUrl, { width: 220, margin: 2 }, function(err) {
+            if (err) {
+              document.getElementById('qrCanvas').innerHTML = '<p style="color:red;">二维码生成失败，请刷新重试</p>';
+              return;
+            }
+            document.getElementById('qrCanvas').innerHTML = '';
+            document.getElementById('qrCanvas').appendChild(canvas);
+          });
+        }
+
+        startCountdown(expiresAt);
+        paymentPollTimer = setInterval(() => pollOrderStatus(orderId), isUsdt ? 15000 : 3000);
+        pollOrderStatus(orderId);
+      }
+
+      function startCountdown(expiresAt) {
+        const expiryTime = new Date(expiresAt).getTime();
+        function tick() {
+          const remaining = Math.max(0, expiryTime - Date.now());
+          if (remaining <= 0) {
+            document.getElementById('payCountdown').textContent = '订单已过期，请重新提交';
+            document.getElementById('payCountdown').style.color = '#dc2626';
+            if (paymentPollTimer) clearInterval(paymentPollTimer);
+            if (countdownTimer) clearInterval(countdownTimer);
+            return;
+          }
+          const min = Math.floor(remaining / 60000);
+          const sec = Math.floor((remaining % 60000) / 1000);
+          document.getElementById('payCountdown').textContent = `订单将在 ${min}:${sec.toString().padStart(2, '0')} 后过期`;
+        }
+        tick();
+        countdownTimer = setInterval(tick, 1000);
+      }
+
+      async function pollOrderStatus(orderId) {
+        try {
+          const res = await fetch('/api/order/' + orderId);
+          const data = await res.json();
+
+          if (data.status === 'paid') {
+            // 支付成功 → 切换到任务状态
+            if (paymentPollTimer) clearInterval(paymentPollTimer);
+            if (countdownTimer) clearInterval(countdownTimer);
+            document.getElementById('paymentStep').style.display = 'none';
+            document.getElementById('status').style.display = 'block';
+
+            const taskId = data.taskId;
+            if (taskId) {
+              // 更新URL
+              window.history.replaceState(null, '', '/?taskId=' + taskId);
+              showQueryLink(taskId);
+              startTaskPolling(taskId);
+            } else {
+              updateStatus('processing', '支付成功，正在启动认证...', '系统正在准备认证流程');
+              // 继续轮询订单获取 taskId
+              setTimeout(() => pollOrderForTask(orderId), 2000);
+            }
+          } else if (data.status === 'expired') {
+            if (paymentPollTimer) clearInterval(paymentPollTimer);
+            if (countdownTimer) clearInterval(countdownTimer);
+            document.getElementById('payCountdown').textContent = '订单已过期，请重新提交';
+            document.getElementById('payCountdown').style.color = '#dc2626';
+          }
+        } catch (err) {}
+      }
+
+      async function pollOrderForTask(orderId) {
+        try {
+          const res = await fetch('/api/order/' + orderId);
+          const data = await res.json();
+          if (data.taskId) {
+            window.history.replaceState(null, '', '/?taskId=' + data.taskId);
+            showQueryLink(data.taskId);
+            startTaskPolling(data.taskId);
+          } else {
+            setTimeout(() => pollOrderForTask(orderId), 2000);
+          }
+        } catch (err) {
+          setTimeout(() => pollOrderForTask(orderId), 3000);
+        }
+      }
+
+      // ============================================
+      // Step 3: 任务进度
+      // ============================================
+
       function showQueryLink(taskId) {
         const link = window.location.origin + '/?taskId=' + taskId;
         document.getElementById('queryLinkBox').style.display = 'block';
         document.getElementById('queryLinkInput').value = link;
       }
 
-      // 复制链接
       function copyQueryLink() {
         const input = document.getElementById('queryLinkInput');
         input.select();
@@ -320,14 +387,12 @@
         });
       }
 
-      // Polling logic
-      function startPolling(taskId) {
-        // 先立即请求一次
-        pollOnce(taskId);
-        const pollTimer = setInterval(() => pollOnce(taskId, pollTimer), 5000);
+      function startTaskPolling(taskId) {
+        pollTaskOnce(taskId);
+        const pollTimer = setInterval(() => pollTaskOnce(taskId, pollTimer), 5000);
       }
 
-      async function pollOnce(taskId, pollTimer) {
+      async function pollTaskOnce(taskId, pollTimer) {
         try {
           const res = await fetch('/api/status/' + taskId);
           if (res.status === 404) {
@@ -369,12 +434,10 @@
         document.getElementById('statusMessage').innerHTML = message;
         document.getElementById('statusPosition').textContent = position || '';
 
-        // 完成或失败时隐藏"耐心等待"提示
         if (type === 'success' || type === 'failed') {
           const tips = document.getElementById('waitingTips');
           if (tips) tips.style.display = 'none';
         }
-        // 失败时追加"可重新提交 / 联系闲鱼"提示
         if (type === 'failed') {
           const msgEl = document.getElementById('statusMessage');
           if (msgEl && !msgEl.dataset.failHintAdded) {
