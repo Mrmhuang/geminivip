@@ -23,16 +23,22 @@ export const config = {
     name: process.env.CARD_NAME || '',
     zip: process.env.CARD_ZIP || '',
   },
-  // 微信收款（人工确认模式）
+  // 微信商户支付（Native Pay 自动确认模式）
+  wechatPay: {
+    mchId: process.env.WECHAT_PAY_MCH_ID || '',
+    apiV3Key: process.env.WECHAT_PAY_API_V3_KEY || '',
+    privateKey: process.env.WECHAT_PAY_PRIVATE_KEY || '',
+    serialNo: process.env.WECHAT_PAY_SERIAL_NO || '',
+    appId: process.env.WECHAT_PAY_APPID || '',
+  },
+  // 支付参数
   payment: {
-    // 收款码图片 URL（建议放 /wechat-qr.png 到 public/）
-    qrUrl: process.env.PAYMENT_QR_URL || '/wechat-qr.png',
-    // 展示给用户的金额（仅展示用，不参与校验）
+    // 展示给用户的金额（元）
     amount: process.env.PAYMENT_AMOUNT || '29.9',
-    // 弹窗倒计时（秒）
-    countdownSec: parseInt(process.env.PAYMENT_COUNTDOWN_SEC || '180', 10),
-    // "我已支付"按钮亮起的最小延迟（秒）
-    claimDelaySec: parseInt(process.env.PAYMENT_CLAIM_DELAY_SEC || '60', 10),
+    // 实际收取金额（分），用于微信下单
+    amountFen: parseInt(process.env.WECHAT_PAY_AMOUNT_FEN || '2990', 10),
+    // 支付超时（秒），超时后关闭订单
+    countdownSec: parseInt(process.env.PAYMENT_COUNTDOWN_SEC || '300', 10),
   },
 };
 
@@ -56,8 +62,9 @@ export function updateCardInfo(card: { number?: string; expiry?: string; cvv?: s
 
 // 启动时校验必需配置
 export function validateConfig(): void {
-  // 微信人工确认模式不强制要求 CARD_SECRET（卡密功能可选保留）
-  if (!config.cardSecret) {
-    console.warn('[Config] CARD_SECRET 未配置，卡密生成/校验功能将不可用（微信支付模式下不影响主流程）');
+  const wp = config.wechatPay;
+  if (!wp.mchId || !wp.apiV3Key || !wp.privateKey || !wp.serialNo || !wp.appId) {
+    console.error('[Config] ⚠️ 微信支付配置不完整，支付功能将不可用');
+    console.error('[Config] 请配置: WECHAT_PAY_MCH_ID, WECHAT_PAY_API_V3_KEY, WECHAT_PAY_PRIVATE_KEY, WECHAT_PAY_SERIAL_NO, WECHAT_PAY_APPID');
   }
 }

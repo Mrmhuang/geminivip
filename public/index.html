@@ -44,10 +44,8 @@
         display: inline-block;
         margin-bottom: 14px;
       }
-      .pay-qr-wrap img {
-        width: 220px; height: 220px;
+      .pay-qr-wrap canvas {
         display: block;
-        object-fit: contain;
       }
       .pay-countdown {
         font-size: 14px; color: #475569;
@@ -65,22 +63,13 @@
         margin-bottom: 16px;
       }
       .pay-tips ol { margin: 0; padding-left: 18px; }
-      .pay-paid-btn {
-        width: 100%;
-        height: 44px;
-        font-size: 15px; font-weight: 600;
-        background: #3b5bdb; color: #fff;
-        border: none; border-radius: 10px;
-        cursor: pointer;
-        transition: opacity .2s, background .2s;
+      .pay-status {
+        font-size: 14px; color: #3b5bdb;
+        font-weight: 500;
+        min-height: 20px;
       }
-      .pay-paid-btn:disabled {
-        background: #cbd5e1; color: #fff;
-        cursor: not-allowed;
-      }
-      .pay-paid-btn.expired-warn {
-        background: #f59e0b;
-      }
+      .pay-status.success { color: #16a34a; }
+      .pay-status.error { color: #dc2626; }
       .pay-close {
         position: absolute; top: 12px; right: 14px;
         background: none; border: none;
@@ -88,11 +77,6 @@
         cursor: pointer; line-height: 1;
       }
       .pay-close:hover { color: #1f2937; }
-      .pay-err {
-        margin-top: 10px;
-        color: #dc2626; font-size: 12px;
-        min-height: 14px;
-      }
     </style>
   </head>
   <body>
@@ -253,25 +237,23 @@
         <h2>微信扫码支付</h2>
         <div class="pay-amount"><span class="yen">¥</span><span id="payAmount">--</span></div>
         <div class="pay-qr-wrap">
-          <img id="payQrImg" src="" alt="微信收款码" />
+          <canvas id="payQrCanvas"></canvas>
         </div>
         <div class="pay-countdown" id="payCountdown">
-          请在 <strong id="payCountdownTime">3:00</strong> 内完成支付
+          请在 <strong id="payCountdownTime">5:00</strong> 内完成支付
         </div>
         <div class="pay-tips">
           <ol>
             <li>使用<strong>微信扫码</strong>支付指定金额</li>
-            <li>支付完成后，点击下方"我已支付"按钮通知管理员</li>
-            <li>管理员核对收款后会立即开始为您认证</li>
+            <li>支付完成后<strong>自动跳转</strong>，无需手动操作</li>
+            <li>如遇问题请联系客服</li>
           </ol>
         </div>
-        <button class="pay-paid-btn" id="payPaidBtn" disabled onclick="iHavePaid()">
-          请等待 <span id="payClaimDelay">60</span> 秒后点击
-        </button>
-        <div class="pay-err" id="payErr"></div>
+        <div class="pay-status" id="payStatus">⏳ 等待扫码支付...</div>
       </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
@@ -302,8 +284,8 @@
               return;
             }
             setSubmitted(true);
-            // 显示支付弹窗，传递 taskId 和支付参数
-            openPayModal(data.taskId, data.payment, Date.now());
+            // 显示支付弹窗，传递 taskId 和 codeUrl
+            openPayModal(data.taskId, data.codeUrl, data.amount, data.countdownSec);
           } catch (err) {
             form.setFields([{ name: 'totpKey', errors: ['网络错误，请重试'] }]);
             setLoading(false);
@@ -389,29 +371,7 @@
         const taskId = params.get('taskId');
         if (!taskId) return;
 
-        // 先查询任务当前状态
-        let st = null;
-        try {
-          const res = await fetch('/api/status/' + taskId);
-          if (res.ok) st = await res.json();
-        } catch (e) {}
-
-        // 如果还在 pending_payment（未点"我已支付"），尝试拉起支付弹窗
-        if (st && st.status === 'pending_payment') {
-          // 注意：URL 恢复时拿不到原始 startAt，按"现在"重新启动倒计时
-          // （只要 task 仍存在于内存中且未超时，就允许用户继续付款 + 点击通知）
-          try {
-            const cfgRes = await fetch('/api/payment-config');
-            const payment = cfgRes.ok ? await cfgRes.json() : { qrUrl: '/wechat-qr.png', amount: '--', countdownSec: 180, claimDelaySec: 60 };
-            openPayModal(taskId, payment, Date.now());
-          } catch (e) {
-            // 拿不到配置就直接进入状态面板
-            showStatusPanel(taskId);
-          }
-          return;
-        }
-
-        // 其他状态 → 直接进入状态面板
+        // 直接进入状态面板（支付弹窗无法恢复，因为 codeUrl 只有第一次返回）
         showStatusPanel(taskId);
       })();
 
@@ -452,11 +412,9 @@
           }
           const data = await res.json();
           if (data.status === 'pending_payment') {
-            updateStatus('payment', '等待您完成支付', '请通过弹窗中的微信收款码完成付款，并点击"我已支付"按钮。');
-          } else if (data.status === 'awaiting_payment') {
-            updateStatus('payment', '✅ 已通知管理员', '我们已收到您的付款通知，管理员核对后会立即开始认证流程（通常 1~10 分钟）。请稍候。');
+            updateStatus('payment', '等待支付完成', '请使用微信扫码完成付款，系统将自动检测到支付并开始处理。');
           } else if (data.status === 'payment_timeout') {
-            updateStatus('failed', '支付确认超时', '订单已超过 30 分钟未确认，已自动取消。如已付款请联系卖家退款，或重新提交订单。');
+            updateStatus('failed', '支付超时', '订单已超过支付时限，已自动取消。请重新提交订单。');
             if (pollTimer) clearInterval(pollTimer);
           } else if (data.status === 'queued') {
             updateStatus('queued', '排队中...', data.message, data.position ? '前面还有 ' + (data.position - 1) + ' 个任务' : '');
@@ -513,9 +471,9 @@
       }
 
       // ============ 微信支付弹窗逻辑 ============
-      let payCtx = null;              // { taskId, countdownSec, claimDelaySec, startAt }
+      let payCtx = null;              // { taskId, countdownSec, startAt }
       let payCountdownTimer = null;
-      let payClaimDelayTimer = null;
+      let payPollTimer = null;
 
       function showStatusPanel(taskId) {
         document.getElementById('formRoot').style.display = 'none';
@@ -530,27 +488,31 @@
         startPolling(taskId);
       }
 
-      function openPayModal(taskId, payment, startAt) {
+      function openPayModal(taskId, codeUrl, amount, countdownSec) {
         payCtx = {
           taskId,
-          countdownSec: payment.countdownSec || 180,
-          claimDelaySec: payment.claimDelaySec || 60,
-          startAt: startAt || Date.now(),
+          countdownSec: countdownSec || 300,
+          startAt: Date.now(),
         };
-        document.getElementById('payAmount').textContent = payment.amount || '--';
-        document.getElementById('payQrImg').src = payment.qrUrl || '/wechat-qr.png';
-        document.getElementById('payClaimDelay').textContent = payCtx.claimDelaySec;
-        document.getElementById('payErr').textContent = '';
+        document.getElementById('payAmount').textContent = amount || '--';
+        document.getElementById('payStatus').textContent = '⏳ 等待扫码支付...';
+        document.getElementById('payStatus').className = 'pay-status';
         document.getElementById('payOverlay').classList.add('show');
 
+        // 生成二维码
+        const canvas = document.getElementById('payQrCanvas');
+        QRCode.toCanvas(canvas, codeUrl, { width: 220, margin: 0 }, function(err) {
+          if (err) console.error('QR生成失败:', err);
+        });
+
         startPayCountdown();
-        startClaimDelay();
+        startPayPoll();
       }
 
       function closePayModal() {
         document.getElementById('payOverlay').classList.remove('show');
         if (payCountdownTimer) { clearInterval(payCountdownTimer); payCountdownTimer = null; }
-        if (payClaimDelayTimer) { clearInterval(payClaimDelayTimer); payClaimDelayTimer = null; }
+        if (payPollTimer) { clearInterval(payPollTimer); payPollTimer = null; }
       }
 
       function formatMMSS(sec) {
@@ -563,79 +525,58 @@
       function startPayCountdown() {
         if (payCountdownTimer) clearInterval(payCountdownTimer);
         const el = document.getElementById('payCountdown');
-        const timeEl = document.getElementById('payCountdownTime');
 
         const tick = () => {
           const elapsed = Math.floor((Date.now() - payCtx.startAt) / 1000);
           const remain = payCtx.countdownSec - elapsed;
           if (remain > 0) {
-            timeEl.textContent = formatMMSS(remain);
             el.classList.remove('expired');
-            el.innerHTML = '请在 <strong id="payCountdownTime">' + formatMMSS(remain) + '</strong> 内完成支付';
+            el.innerHTML = '请在 <strong>' + formatMMSS(remain) + '</strong> 内完成支付';
           } else {
             el.classList.add('expired');
-            el.innerHTML = '⚠️ 已超过建议支付时间，如已付款请尽快点击下方按钮';
+            el.innerHTML = '⚠️ 支付已超时，请重新提交订单';
             clearInterval(payCountdownTimer);
             payCountdownTimer = null;
-            const btn = document.getElementById('payPaidBtn');
-            btn.classList.add('expired-warn');
+            // 停止轮询
+            if (payPollTimer) { clearInterval(payPollTimer); payPollTimer = null; }
+            document.getElementById('payStatus').textContent = '❌ 订单已超时';
+            document.getElementById('payStatus').className = 'pay-status error';
           }
         };
         tick();
         payCountdownTimer = setInterval(tick, 1000);
       }
 
-      function startClaimDelay() {
-        if (payClaimDelayTimer) clearInterval(payClaimDelayTimer);
-        const btn = document.getElementById('payPaidBtn');
-        const delayEl = document.getElementById('payClaimDelay');
+      // 自动轮询支付状态（每 3 秒）
+      function startPayPoll() {
+        if (payPollTimer) clearInterval(payPollTimer);
 
-        const tick = () => {
-          const elapsed = Math.floor((Date.now() - payCtx.startAt) / 1000);
-          const remain = payCtx.claimDelaySec - elapsed;
-          if (remain > 0) {
-            btn.disabled = true;
-            delayEl.textContent = remain;
-            btn.innerHTML = '请等待 <span id="payClaimDelay">' + remain + '</span> 秒后点击';
-          } else {
-            btn.disabled = false;
-            btn.textContent = '✅ 我已支付，通知管理员确认';
-            clearInterval(payClaimDelayTimer);
-            payClaimDelayTimer = null;
-          }
+        const poll = async () => {
+          if (!payCtx) return;
+          try {
+            const res = await fetch('/api/payment-status/' + payCtx.taskId);
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.status === 'queued' || data.status === 'running' || data.status === 'processing') {
+              // 支付成功！关闭弹窗，进入状态面板
+              document.getElementById('payStatus').textContent = '✅ 支付成功！正在跳转...';
+              document.getElementById('payStatus').className = 'pay-status success';
+              const taskId = payCtx.taskId;
+              setTimeout(() => {
+                closePayModal();
+                showStatusPanel(taskId);
+              }, 1000);
+            } else if (data.status === 'payment_timeout' || data.status === 'failed') {
+              document.getElementById('payStatus').textContent = '❌ ' + (data.message || '订单已取消');
+              document.getElementById('payStatus').className = 'pay-status error';
+              if (payPollTimer) { clearInterval(payPollTimer); payPollTimer = null; }
+            }
+            // pending_payment → 继续等待
+          } catch (err) {}
         };
-        tick();
-        payClaimDelayTimer = setInterval(tick, 1000);
-      }
 
-      async function iHavePaid() {
-        const btn = document.getElementById('payPaidBtn');
-        const errEl = document.getElementById('payErr');
-        btn.disabled = true;
-        btn.textContent = '提交中...';
-        errEl.textContent = '';
-        try {
-          const res = await fetch('/api/user-paid', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ taskId: payCtx.taskId }),
-          });
-          const data = await res.json();
-          if (!res.ok || !data.success) {
-            errEl.textContent = data.error || '提交失败，请重试';
-            btn.disabled = false;
-            btn.textContent = '✅ 我已支付，通知管理员确认';
-            return;
-          }
-          // 提交成功 → 关闭弹窗、进入 status 面板
-          const taskId = payCtx.taskId;
-          closePayModal();
-          showStatusPanel(taskId);
-        } catch (err) {
-          errEl.textContent = '网络错误，请重试';
-          btn.disabled = false;
-          btn.textContent = '✅ 我已支付，通知管理员确认';
-        }
+        poll(); // 立即执行一次
+        payPollTimer = setInterval(poll, 3000);
       }
       // ============ 微信支付弹窗逻辑 END ============
     </script>

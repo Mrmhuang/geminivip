@@ -30,6 +30,17 @@ db.exec(`CREATE TABLE IF NOT EXISTS submit_logs (
   created_at TEXT NOT NULL
 )`);
 
+// 微信支付订单表
+db.exec(`CREATE TABLE IF NOT EXISTS payment_orders (
+  out_trade_no TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  code_url TEXT NOT NULL,
+  amount_fen INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  transaction_id TEXT,
+  created_at TEXT NOT NULL
+)`);
+
 // 兼容已有数据库：如果表已存在但缺少新字段则 ALTER TABLE 添加
 try {
   db.exec(`ALTER TABLE submit_logs ADD COLUMN offer_link TEXT`);
@@ -160,4 +171,36 @@ export function getSubmitLogById(id: number): any | null {
  */
 export function getSuccessLogs(): { id: number; email: string; link: string; created_at: string }[] {
   return db.prepare('SELECT id, email, link, created_at FROM success_logs ORDER BY id DESC').all() as any;
+}
+
+// ============ 微信支付订单 ============
+
+/**
+ * 保存微信支付订单
+ */
+export function savePaymentOrder(outTradeNo: string, taskId: string, codeUrl: string, amountFen: number): void {
+  db.prepare(
+    'INSERT INTO payment_orders (out_trade_no, task_id, code_url, amount_fen, status, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(outTradeNo, taskId, codeUrl, amountFen, 'pending', new Date().toISOString());
+}
+
+/**
+ * 查询支付订单
+ */
+export function getPaymentOrder(outTradeNo: string): { out_trade_no: string; task_id: string; code_url: string; amount_fen: number; status: string; transaction_id: string | null; created_at: string } | null {
+  return db.prepare('SELECT * FROM payment_orders WHERE out_trade_no = ?').get(outTradeNo) as any || null;
+}
+
+/**
+ * 通过 taskId 查询支付订单
+ */
+export function getPaymentOrderByTaskId(taskId: string): { out_trade_no: string; task_id: string; code_url: string; amount_fen: number; status: string; transaction_id: string | null; created_at: string } | null {
+  return db.prepare('SELECT * FROM payment_orders WHERE task_id = ?').get(taskId) as any || null;
+}
+
+/**
+ * 标记订单已支付
+ */
+export function markPaymentOrderPaid(outTradeNo: string, transactionId: string): void {
+  db.prepare('UPDATE payment_orders SET status = ?, transaction_id = ? WHERE out_trade_no = ?').run('paid', transactionId, outTradeNo);
 }

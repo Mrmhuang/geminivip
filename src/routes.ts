@@ -1,6 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { generateKey } from './cardKey';
-import { markKeyUsed, restoreKey, getSubmitLogs, logSubmit, getSubmitLogById, updateTelegramStatus, updatePaymentStatus } from './database';
+import { getSubmitLogs, logSubmit, getSubmitLogById, updateTelegramStatus, updatePaymentStatus, savePaymentOrder, markPaymentOrderPaid } from './database';
 import {
   getTaskStatus,
   getQueueLength,
@@ -8,7 +7,7 @@ import {
   isProcessorReady,
   isEmailActive,
   createPendingPaymentTask,
-  markUserPaid,
+  confirmPaymentAuto,
   confirmPaymentAndEnqueue,
   rejectPayment,
   getPaymentPendingTasks,
@@ -18,21 +17,22 @@ import { config, updateTelegramSession, updateCardInfo } from './config';
 import { reconnectTelegram, getTelegramStatus, pingTelegram } from './telegramWorker';
 import { getBrowserStatus, startBindCard } from './browserWorker';
 import { Task } from './taskQueue';
+import { createNativeOrder, queryWechatOrderStatus } from './wechatPay';
+import crypto from 'crypto';
 
 export const router = Router();
 
 /**
- * POST /api/submit - 提交认证请求（微信人工确认支付模式）
+ * POST /api/submit - 提交认证请求（微信商户支付自动确认模式）
  *
  * 流程：
  *   1) 校验字段
- *   2) 创建 pending_payment 任务（不入认证队列）
- *   3) 返回 taskId + 支付信息（前端展示收款码 + 倒计时）
- *   4) 用户付款后调用 /api/user-paid 通知管理员
- *   5) 管理员在 /admin 点"确认收款" → 任务正式入队
+ *   2) 调用微信 API 创建 Native Pay 订单
+ *   3) 创建 pending_payment 任务
+ *   4) 返回 taskId + codeUrl（前端生成二维码 + 轮询支付状态）
  */
-router.post('/api/submit', (req: Request, res: Response) => {
-  const { email, password, totpKey, cardKey } = req.body;
+router.post('/api/submit', async (req: Request, res: Response) => {
+  const { email, password, totpKey } = req.body;
 
   // 输入校验
   if (!email || !password || !totpKey) {
@@ -59,74 +59,135 @@ router.post('/api/submit', (req: Request, res: Response) => {
     return;
   }
 
-  // 检查该邮箱是否有正在执行中的任务（防重复提交，含待支付/待确认）
+  // 检查该邮箱是否有正在执行中的任务（防重复提交）
   if (isEmailActive(email)) {
     res.status(400).json({ error: '该邮箱已有进行中的订单，请勿重复提交' });
     return;
   }
 
-  // 检查认证服务是否就绪（避免用户付了款发现服务挂了）
+  // 检查认证服务是否就绪
   if (!isProcessorReady()) {
     res.status(503).json({ error: '认证服务暂不可用，请稍后再试' });
     return;
   }
 
-  // 兼容卡密：若传了卡密则做轻校验（不消耗），不传则用占位符
-  const finalCardKey = (cardKey && typeof cardKey === 'string' && cardKey.trim())
-    ? cardKey.trim()
-    : 'wechat-pay';
+  // 生成商户订单号
+  const outTradeNo = `gvip_${Date.now().toString(36)}_${crypto.randomBytes(4).toString('hex')}`;
 
-  // 创建"待支付"任务（不入队）
-  const task = createPendingPaymentTask(email, password, totpKey, finalCardKey);
+  // 调用微信支付 API 创建 Native Pay 订单
+  let codeUrl: string;
+  try {
+    // 计算超时时间（RFC3339 +08:00）
+    const expireMs = Date.now() + config.payment.countdownSec * 1000;
+    const timeExpire = new Date(expireMs + 8 * 60 * 60 * 1000)
+      .toISOString()
+      .replace(/\.\d{3}Z$/, '+08:00');
 
-  // 记录提交日志（明文，便于排查）
-  const logId = logSubmit(email, password, totpKey, finalCardKey, undefined, task.id);
+    codeUrl = await createNativeOrder({
+      outTradeNo,
+      description: 'Gemini Pro 一年会员认证',
+      totalFen: config.payment.amountFen,
+      timeExpire,
+    });
+  } catch (err: any) {
+    console.error('[Submit] 微信下单失败:', err.message);
+    res.status(502).json({ error: '支付渠道暂时不可用，请稍后重试' });
+    return;
+  }
+
+  // 创建"待支付"任务
+  const task = createPendingPaymentTask(email, password, totpKey, 'wechat-pay');
+  task.outTradeNo = outTradeNo;
+
+  // 记录提交日志
+  const logId = logSubmit(email, password, totpKey, 'wechat-pay', undefined, task.id);
   task.logId = logId;
+
+  // 保存支付订单到数据库
+  savePaymentOrder(outTradeNo, task.id, codeUrl, config.payment.amountFen);
 
   res.json({
     taskId: task.id,
-    message: '请按提示完成支付',
-    payment: {
-      qrUrl: config.payment.qrUrl,
-      amount: config.payment.amount,
-      countdownSec: config.payment.countdownSec,
-      claimDelaySec: config.payment.claimDelaySec,
-    },
+    codeUrl,
+    amount: config.payment.amount,
+    countdownSec: config.payment.countdownSec,
   });
 });
 
 /**
- * POST /api/user-paid - 用户点击"我已支付"，通知管理员确认收款
- * Body: { taskId }
+ * GET /api/payment-status/:taskId - 轮询支付状态（前端每 3 秒调用）
+ *
+ * 逻辑：
+ *   - 如果任务已非 pending_payment（已确认/已失败/已超时），直接返回状态
+ *   - 如果还在 pending_payment，则调微信 API 查询订单状态
+ *   - 若微信返回 SUCCESS，自动入队
  */
-router.post('/api/user-paid', (req: Request, res: Response) => {
-  const { taskId } = req.body;
-  if (!taskId) {
-    res.status(400).json({ error: '缺少 taskId' });
+
+// 查询频率控制：每个订单最多 5 秒查一次微信 API
+const lastQueryMap = new Map<string, number>();
+
+router.get('/api/payment-status/:taskId', async (req: Request<{ taskId: string }>, res: Response) => {
+  const { taskId } = req.params;
+
+  const task = getTask(taskId);
+  if (!task) {
+    res.status(404).json({ error: '任务不存在或已过期' });
     return;
   }
 
-  const minDelayMs = config.payment.claimDelaySec * 1000;
-  const result = markUserPaid(taskId, minDelayMs);
+  // 已经不是 pending_payment 了，直接返回
+  if (task.status !== 'pending_payment') {
+    res.json({ status: task.status, message: task.message });
+    return;
+  }
 
-  switch (result) {
-    case 'ok': {
-      const task = getTask(taskId);
-      if (task?.logId) updatePaymentStatus(task.logId, 'user_claimed');
-      res.json({ success: true, message: '已通知管理员，请稍候确认收款' });
-      return;
+  // 还在 pending_payment → 查微信 API
+  const outTradeNo = task.outTradeNo;
+  if (!outTradeNo) {
+    res.json({ status: 'pending_payment', message: '等待支付...' });
+    return;
+  }
+
+  // 频率控制：同一订单 5 秒内不重复查微信
+  const now = Date.now();
+  const lastQuery = lastQueryMap.get(outTradeNo) || 0;
+  if (now - lastQuery < 5000) {
+    res.json({ status: 'pending_payment', message: '等待支付...' });
+    return;
+  }
+  lastQueryMap.set(outTradeNo, now);
+
+  // 查询微信订单状态
+  try {
+    const result = await queryWechatOrderStatus(outTradeNo);
+    if (result && result.tradeState === 'SUCCESS') {
+      // 金额校验
+      if (result.totalAmount !== config.payment.amountFen) {
+        console.error(`[Payment] 金额不匹配! 期望 ${config.payment.amountFen} 分，实际 ${result.totalAmount} 分`);
+      }
+
+      // 自动确认支付，任务入队
+      const confirmResult = confirmPaymentAuto(taskId);
+      if (confirmResult === 'ok') {
+        // 更新数据库
+        markPaymentOrderPaid(outTradeNo, result.transactionId);
+        if (task.logId) updatePaymentStatus(task.logId, 'confirmed');
+        console.log(`[Payment] 订单 ${outTradeNo} 支付成功，任务 ${taskId} 已入队`);
+        res.json({ status: 'queued', message: '支付成功，排队中...' });
+      } else {
+        // processor_not_ready 等异常
+        res.json({ status: 'pending_payment', message: '支付已确认，正在排队...' });
+      }
+      // 清理频率缓存
+      lastQueryMap.delete(outTradeNo);
+    } else {
+      // 未支付 / 其他状态
+      res.json({ status: 'pending_payment', message: '等待支付...' });
     }
-    case 'not_found':
-      res.status(404).json({ error: '订单不存在或已过期' });
-      return;
-    case 'wrong_status':
-      res.status(400).json({ error: '订单状态异常，无法标记为已支付' });
-      return;
-    case 'too_early':
-      res.status(429).json({
-        error: `请稍后再试（提交后需等待至少 ${config.payment.claimDelaySec} 秒）`,
-      });
-      return;
+  } catch (err: any) {
+    console.error('[Payment] 查询微信订单失败:', err.message);
+    // 查询失败不影响用户体验，返回继续等待
+    res.json({ status: 'pending_payment', message: '等待支付...' });
   }
 });
 
@@ -147,18 +208,6 @@ router.get('/api/status/:taskId', (req: Request<{ taskId: string }>, res: Respon
  */
 router.get('/api/queue', (req: Request, res: Response) => {
   res.json({ length: getActiveCount() });
-});
-
-/**
- * GET /api/payment-config - 获取支付展示配置（前端 URL 恢复时使用）
- */
-router.get('/api/payment-config', (_req: Request, res: Response) => {
-  res.json({
-    qrUrl: config.payment.qrUrl,
-    amount: config.payment.amount,
-    countdownSec: config.payment.countdownSec,
-    claimDelaySec: config.payment.claimDelaySec,
-  });
 });
 
 /**
@@ -258,51 +307,6 @@ router.post('/api/admin/reject-payment', (req: Request, res: Response) => {
     case 'wrong_status':
       res.status(400).json({ error: '任务状态不允许取消' });
       return;
-  }
-});
-
-/**
- * POST /api/admin/revoke-key - 作废卡密（退货用）
- */
-router.post('/api/admin/revoke-key', (req: Request, res: Response) => {
-  const pwd = req.headers['x-admin-password'] || req.query.pwd;
-  if (pwd !== config.adminPassword) {
-    res.status(401).json({ error: '密码错误' });
-    return;
-  }
-  const { cardKey } = req.body;
-  if (!cardKey) {
-    res.status(400).json({ error: '请提供 cardKey' });
-    return;
-  }
-  // markKeyUsed 会标记为已使用，之后该卡密无法再用
-  const result = markKeyUsed(cardKey);
-  if (result) {
-    res.json({ success: true, message: `卡密 ${cardKey} 已作废` });
-  } else {
-    res.json({ success: true, message: `卡密 ${cardKey} 已经是失效状态` });
-  }
-});
-
-/**
- * POST /api/admin/restore-key - 恢复卡密（误消耗时用）
- */
-router.post('/api/admin/restore-key', (req: Request, res: Response) => {
-  const pwd = req.headers['x-admin-password'] || req.query.pwd;
-  if (pwd !== config.adminPassword) {
-    res.status(401).json({ error: '密码错误' });
-    return;
-  }
-  const { cardKey } = req.body;
-  if (!cardKey) {
-    res.status(400).json({ error: '请提供 cardKey' });
-    return;
-  }
-  const result = restoreKey(cardKey);
-  if (result) {
-    res.json({ success: true, message: `卡密 ${cardKey} 已恢复，可再次使用` });
-  } else {
-    res.json({ success: false, message: `卡密 ${cardKey} 本来就未被使用` });
   }
 });
 
@@ -523,25 +527,6 @@ router.post('/api/admin/manual-bindcard', async (req: Request, res: Response) =>
   });
 
   res.json({ success: true, message: '绑卡已触发，请稍后刷新查看结果', logId });
-});
-
-/**
- * POST /api/admin/generate-keys - 生成卡密
- */
-router.post('/api/admin/generate-keys', (req: Request, res: Response) => {
-  const pwd = req.headers['x-admin-password'] || req.query.pwd;
-  if (pwd !== config.adminPassword) {
-    res.status(401).json({ error: '密码错误' });
-    return;
-  }
-
-  const count = Math.min(parseInt(req.body.count || '5', 10), 100);
-  const keys: string[] = [];
-  for (let i = 0; i < count; i++) {
-    keys.push(generateKey(config.cardSecret));
-  }
-
-  res.json({ keys });
 });
 
 /**
